@@ -71,10 +71,15 @@ def pre_sense(game: TrainingGame):
 def get_bn_output(model, optimizer, input, actual):
     input = np.stack(input)
     input = torch.from_numpy(input).to(model.device)
+    print(actual)
     out = model(input)
-    loss = model.loss(input, out, actual)
+    print('got output')
+    loss = model.loss_fn(input, out, actual)
+    print('computed loss')
     loss.backward()
+    print('propogated loss')
     optimizer.step()
+    print('ran optimizer')
     return list(out.detach().numpy())
 
 # step 3
@@ -186,22 +191,29 @@ def run_batch(input, model, optimizer, batch_size, output_channels):
         actual.append(actual_board)
         batch_input.append(input_board)
         ids.append((process_id, game_id))
-
+        print(len(actual))
+    print('accumulated batch!')
     result = get_bn_output(model, optimizer, batch_input, actual)
+    print('got result')
     for i,r in enumerate(result):
         p_id, game_id = ids[i]
         output_channels[p_id].put((r, game_id))
-    
+    print('done with batch')
 
 def convert_board_to_target(game: TrainingGame) -> np.ndarray:
+    # PIECE LOCATIONS
     piece_locs = np.zeros(shape=(6,8,8), dtype=np.float32)
     for r in range(8):
         for c in range(8):
             sq = (r * 8) + c
             piece = game.board.piece_at(sq)
-            if piece: 
+            if piece and piece.color != game.we_play_white: 
                 index = ID_MAPPING[piece.piece_type]
                 piece_locs[index][r][c] = 1
+    # EN PASSANT
+
+    # CASTLING RIGHTS
+    
     return piece_locs
 
 
