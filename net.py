@@ -62,24 +62,16 @@ class BeliefNet(nn.Module):
         
 
     def forward(self, x):
-        absences = torch.select_copy(x, dim=1, index=0).unsqueeze(1).expand((-1,6,-1,-1))
-        piece_invariant = torch.sum(self.eight_bit_mask * x[:,4,0,:], -1)
         x = self.conv1(x)
         for r in self.residual_layers:
             x = r(x)
         x = self.conv2(x) 
         x = torch.sigmoid(x)
-        
-        # normalize first 6 layers to sum to PI 
-        probs, passant, castle = torch.split(x, (6, 1, 1), dim=1)
-        # zero out any squares in probs where we know there isn't an opponet's piece
-        probs = probs * (-absences + 1)
-        castle = self.castle_flatten(castle)
-        passant = self.passant_flatten(passant)
 
-        castle = torch.sigmoid(self.castle_layer(castle))
-        passant = torch.sigmoid(self.passant_layer(passant))
-        probs = probs * (piece_invariant / torch.sum(probs, (3,2,1))).view(-1,1,1,1)
+        probs, passant, castle = torch.split(x, (6, 1, 1), dim=1)
+        castle = torch.sigmoid(self.castle_flatten(castle))
+        passant = torch.sigmoid(self.passant_flatten(passant))
+        
         return probs, passant, castle
 
     def loss_fn(self, input, output, actual) -> torch.TensorType:
