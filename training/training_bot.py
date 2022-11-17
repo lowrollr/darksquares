@@ -10,7 +10,7 @@ from typing import List, Optional, Tuple
 import chess
 
 import torch
-from greatwhite import GreatWhiteBot
+from darksquares import DarkSquaresBot
 from net import BeliefNet
 from training.training_evaluator import TrainingEvaluator
 from reconchess.game import LocalGame
@@ -38,7 +38,7 @@ from state import ID_MAPPING
 # 4. (NONLOCAL) get belief net output -> add converted belief state to batch
 # 6. update belief state and return best move
 
-class TrainingBot(GreatWhiteBot):
+class TrainingBot(DarkSquaresBot):
     def __init__(self, leela) -> None:
         super().__init__(TrainingEvaluator(leela))
 
@@ -211,7 +211,8 @@ def convert_board_to_target(game: TrainingGame) -> np.ndarray:
                 index = ID_MAPPING[piece.piece_type]
                 piece_locs[index][r][c] = 1
     # EN PASSANT
-
+    last_move = game.board.moves[-1]
+    if last_move
     # CASTLING RIGHTS
     
     return piece_locs

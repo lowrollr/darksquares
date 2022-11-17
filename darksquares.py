@@ -10,13 +10,13 @@ from net import BeliefNet
 
 from state import BeliefState
 
-class GreatWhiteBot(reconchess.Player):
+class DarkSquaresBot(reconchess.Player):
     def __init__(self, evaluator) -> None:
         super().__init__()
         self.color = None
         self.beliefs: BeliefState = None
         self.evaluator: Evaluator = evaluator
-        self.__name__ = 'GreatWhiteBot'
+        self.__name__ = 'DarkSquaresBot'
 
     def handle_game_start(self, color: reconchess.Color, board: reconchess.chess.Board, opponent_name: str):
         self.color = color
