@@ -4,7 +4,7 @@ from matplotlib.pyplot import pie
 import numpy as np
 import reconchess
 import torch
-
+from utils.board import convert_coords_to_squares, convert_squares_to_coords, opposite_square
 
 
 ID_MAPPING = {
@@ -23,84 +23,94 @@ class BeliefState:
         self.board = reconchess.chess.Board('8/8/8/8/8/8/PPPPPPPP/RNBQKBNR')
         if not playing_white:
             self.board = reconchess.chess.Board('rnbqkbnr/pppppppp/8/8/8/8/8/8')
-        self.absences = np.zeros(shape=(2,8,8))
-        self.presences = np.zeros(shape=(2,8,8))
+        self.move_absences = np.zeros(shape=(1,8,8))
+        self.move_presences = np.zeros(shape=(1,8,8))
+        self.sense_absences = np.zeros(shape=(1,8,8))
+        self.sense_presences = np.zeros(shape=(1,8,8))
         self.num_moves = 0
         self.num_opp_pieces = 16
-        self.opp_beliefs: np.ndarray = np.zeros(shape=(8,8,8))
+        self.opp_board = np.zeros(shape=(6,8,8))
+        self.opp_en_passant = np.zeros(shape=(1,8))
+        self.opp_castle_q = 1
+        self.opp_castle_k = 1
         self.white = playing_white
 
-        self.init_opp_beliefs()
+        self.init_opp_board()
     
-    def init_opp_beliefs(self):
+    def init_opp_board(self):
         for piece, i in ID_MAPPING.items():
             if piece == reconchess.chess.PAWN:
-                self.opp_beliefs[i][6 if self.white else 1] = 1
+                self.opp_board[i][6 if self.white else 1] = 1
             elif piece == reconchess.chess.KNIGHT:
-                self.opp_beliefs[i][7 if self.white else 0][1] = 1
-                self.opp_beliefs[i][7 if self.white else 0][6] = 1
+                self.opp_board[i][7 if self.white else 0][1] = 1
+                self.opp_board[i][7 if self.white else 0][6] = 1
             elif piece == reconchess.chess.BISHOP:
-                self.opp_beliefs[i][7 if self.white else 0][2] = 1
-                self.opp_beliefs[i][7 if self.white else 0][5] = 1
+                self.opp_board[i][7 if self.white else 0][2] = 1
+                self.opp_board[i][7 if self.white else 0][5] = 1
             elif piece == reconchess.chess.ROOK:
-                self.opp_beliefs[i][7 if self.white else 0][0] = 1
-                self.opp_beliefs[i][7 if self.white else 0][7] = 1
+                self.opp_board[i][7 if self.white else 0][0] = 1
+                self.opp_board[i][7 if self.white else 0][7] = 1
             elif piece == reconchess.chess.QUEEN:
-                self.opp_beliefs[i][7 if self.white else 0][3] = 1
+                self.opp_board[i][7 if self.white else 0][3] = 1
             elif piece == reconchess.chess.KING:
-                self.opp_beliefs[i][7 if self.white else 0][4] = 1
-        self.opp_beliefs[6] = 0
-        self.opp_beliefs[7] = 1
-        self.absences[0][:2] = 1
-        self.presences[0][6:] = 1
+                self.opp_board[i][7 if self.white else 0][4] = 1
+    
+    def clear_information_gain(self) -> None:
+        self.move_absences = np.zeros(shape=(1,8,8))
+        self.move_presences = np.zeros(shape=(1,8,8))
+        self.sense_absences = np.zeros(shape=(1,8,8))
+        self.sense_presences = np.zeros(shape=(1,8,8))
 
-    def to_nn_input(self, moved_last=False) -> np.ndarray:
+
+    def to_nn_input(self) -> np.ndarray:
         data_tensor = np.zeros(shape=(22,8,8), dtype=np.float32)
-
         # -- INFORMATION GAIN -- #
-        data_tensor[0:2] = self.absences
-        data_tensor[2:4] = self.presences
+        data_tensor[0] = self.move_absences
+        data_tensor[1] = self.sense_absences
+        data_tensor[2] = self.move_presences
+        data_tensor[3] = self.sense_presences
         data_tensor[4] = np.unpackbits(np.array([self.num_moves], dtype=np.uint8), count=8)
         data_tensor[5] = np.unpackbits(np.array([self.num_opp_pieces], dtype=np.uint8), count=8)
 
-        # -- CASTLING -- # 
+        # -- CASTLING (US) -- # 
         if self.board.has_kingside_castling_rights(self.white):
             data_tensor[6,:,0:4] = 1
         if self.board.has_queenside_castling_rights(self.white):
             data_tensor[6,:,4:] = 1
 
-        # -- EN PASSANT -- # jesus this code is bad
-        if moved_last:
-            # if our last move was a pawn and it moved two spaces, flag en passant on that rank
-            if len(self.board.move_stack):
-                move = self.board.move_stack[-1]
-                fr_sq, to_sq = move.from_square, move.to_square
-                if self.board.piece_at(fr_sq) == reconchess.chess.PAWN and abs(fr_sq - to_sq) == 16:
-                    file = fr_sq % 8
-                    data_tensor[7,:,file] = 1
-        else:
-            if len(self.board.move_stack) > 1:
-                move = self.board.move_stack[-2]
-                fr_sq, to_sq = move.from_square, move.to_square
-                if self.board.piece_at(fr_sq) == reconchess.chess.PAWN and abs(fr_sq - to_sq) == 16:
-                    file = fr_sq % 8
-                    data_tensor[7,:,file] = 1
+        # -- EN PASSANT (US) -- # 
+        if len(self.board.move_stack) > 1:
+            move = self.board.move_stack[-2]
+            fr_sq, to_sq = move.from_square, move.to_square
+            if self.board.piece_at(fr_sq) == reconchess.chess.PAWN and abs(fr_sq - to_sq) == 16:
+                fi = fr_sq % 8
+                data_tensor[7,:,fi] = 1
 
-        # -- OUR PIECES -- #
+        # -- PIECES (US) -- #
         for sq, piece in self.board.piece_map().items():
             v = ID_MAPPING[piece.piece_type] + 8
-            r, c = sq // 8, sq % 8
-            data_tensor[v][r][c] = 1
+            if self.white:
+                r, c = convert_squares_to_coords([sq])[0]
+                data_tensor[v][r][c] = 1
+            else:
 
-        # -- ENEMY PIECES -- #
-        data_tensor[14:] = self.opp_beliefs
+                r, c = convert_squares_to_coords([opposite_square(sq)])[0]
+                data_tensor[v][r][c] = 1
+
+        # -- PIECES (THEM) -- #
+        data_tensor[14:20] = self.opp_board
         
+        # -- EN PASSANT (THEM) -- #
+        data_tensor[20:] = np.tile(self.opp_en_passant, (8,1,1))
+        
+        # -- CASTLING (THEM) -- #
+        data_tensor[21:,:,0:4] = self.opp_castle_q
+        data_tensor[21:,:,4:] = self.opp_castle_k 
+
         return data_tensor
         
         
-    def reset_absences_presences(self) -> None:
-        self.absences = np.zeros(shape=(2,8,8))
-        self.presences = np.zeros(shape=(2,8,8))
+    
 
     def set_absences(self, index):
         for r in range(8):
@@ -126,7 +136,7 @@ class BeliefState:
         
     # apply the move to our board, and make sure any gleaned information about our opponet's pieces makes it into our belief state
     def apply_move(self, move: reconchess.chess.Move) -> None:
-        self.reset_absences_presences()
+        self.clear_information_gain()
         from_sq, to_sq = self.convert_move_from_to(move)
         in_between_squares = []
         print(self.board, move)
@@ -165,11 +175,11 @@ class BeliefState:
 
     def set_ground_truth(self, truth: List[Tuple[reconchess.Square, Optional[reconchess.chess.Piece]]]):
         for sq, piece in truth:
-            r, c = sq // 8, sq % 8
-        
+            r, c = convert_squares_to_coords(sq)[0]
+
             if piece:
                 if piece.color != self.white:
-                    self.presences[0][r][c] = 1
+                    self.sense_presences[r][c] = 1
                     j = -1
                     if piece == reconchess.chess.PAWN:
                         self.set_then_normalize(5, r, c, 1)
@@ -193,9 +203,9 @@ class BeliefState:
                         if i != j:
                             self.set_then_normalize(i, r, c, 0)
                 else:
-                    self.absences[0][r][c] = 1
+                    self.sense_absences[r][c] = 1
             else:
-                self.absences[0][r][c] = 1
+                self.sense_absences[r][c] = 1
 
 
     def capture(self, square: reconchess.Square):
@@ -219,9 +229,10 @@ class BeliefState:
         # if moving piece as a pawn and it tried to capture, there's no piece to capture on that square
         # if moving piece was a pawn and it tried to move forward, there is a piece on the square it tried to move forward to
 
+        # get piece that is moving
         piece = self.board.piece_at(req_move.from_square)
-        from_r, from_c = req_move.from_square // 8, req_move.from_square % 8
-        to_r, to_c = req_move.to_square // 8, req_move.to_square % 8
+        
+        (from_r, from_c), (to_r, to_c) = convert_squares_to_coords([req_move.from_square, req_move.to_square])
 
         if piece.piece_type == reconchess.chess.PAWN:
             if from_c != to_c:
@@ -230,16 +241,16 @@ class BeliefState:
                 if taken_move is None:
                     self.presences[1][from_r + (1 if self.white else -1)][from_c] = 1
                 else:
-                    taken_to_r, taken_to_c = taken_move.to_square // 8, taken_move.to_square % 8
+                    taken_to_r, taken_to_c = convert_squares_to_coords(taken_move.to_square)[0]
                     self.presences[1][taken_to_r + (1 if self.white else -1)][taken_to_c] = 1
 
     def set_then_normalize(self, index: int, r: int, c: int, new_value: float) -> None:
-        diff = new_value - self.opp_beliefs[index][r][c]
-        prob_sum = np.sum(self.opp_beliefs[index])
+        diff = new_value - self.opp_board[index][r][c]
+        prob_sum = np.sum(self.opp_board[index])
         new_sum = prob_sum + diff
         coeff = max(prob_sum / new_sum, 0) if new_sum else 0
-        self.opp_beliefs[index] = np.multiply(self.opp_beliefs[index], coeff)
-        self.opp_beliefs[index][r][c] = new_value
+        self.opp_board[index] = np.multiply(self.opp_board[index], coeff)
+        self.opp_board[index][r][c] = new_value
             
     def convert_move_from_to(self, move: reconchess.chess.Move):
         if self.white:

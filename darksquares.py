@@ -34,25 +34,28 @@ class DarkSquaresBot(reconchess.Player):
             return 0
 
     def handle_sense_result(self, sense_result: List[Tuple[reconchess.Square, Optional[reconchess.chess.Piece]]]):
-        print(sense_result)
+        
         self.beliefs.set_ground_truth(sense_result)
-
 
     def choose_move(self, move_actions: List[reconchess.chess.Move], seconds_left: float) -> Optional[reconchess.chess.Move]:
         return self.evaluator.choose_move(self.beliefs)
 
     def handle_move_result(self, requested_move: Optional[reconchess.chess.Move], taken_move: Optional[reconchess.chess.Move],
                            captured_opponent_piece: bool, capture_square: Optional[reconchess.Square]):
-        
-
         if taken_move != requested_move:
+            # handle implied difference between the requested move and the taken move
             self.beliefs.apply_impl(requested_move, taken_move)
         if capture_square:
+            # update beliefes if we captured a piece
             self.beliefs.capture(capture_square)
         if taken_move:
+            # update beliefs if we moved a piece (we push the move in here)
             self.beliefs.apply_move(taken_move)
         else:
+            # push nullmove if we did not move
             self.beliefs.board.push(reconchess.chess.Move.from_uci('0000'))
+
+        # push placeholder nullmove for our opponent
         self.beliefs.board.push(reconchess.chess.Move.from_uci('0000'))
 
         print(f'Requested: {requested_move}, Taken: {taken_move}')

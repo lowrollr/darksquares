@@ -44,9 +44,7 @@ class BeliefNet(nn.Module):
         self.passant_layer = nn.Linear(64, 8)
         self.castle_flatten = nn.Flatten()
         self.castle_layer = nn.Linear(64, 2)
-
         self.loss_fn = nn.MSELoss()
-        self.eight_bit_mask = 2 ** torch.arange(8 - 1, -1, -1).to(self.device, torch.float32)
     
     @property
     def device(self):
@@ -71,7 +69,7 @@ class BeliefNet(nn.Module):
         probs, passant, castle = torch.split(x, (6, 1, 1), dim=1)
         castle = torch.sigmoid(self.castle_flatten(castle))
         passant = torch.sigmoid(self.passant_flatten(passant))
-        
+
         return probs, passant, castle
 
     def loss_fn(self, input, output, actual) -> torch.TensorType:
