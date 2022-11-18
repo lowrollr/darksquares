@@ -71,16 +71,16 @@ def pre_sense(game: TrainingGame):
 def get_bn_output(model, optimizer, input, actual):
     input = np.stack(input)
     input = torch.from_numpy(input).to(model.device)
-    print(actual)
+    
     out = model(input)
     print('got output')
     loss = model.loss_fn(input, out, actual)
     print('computed loss')
     loss.backward()
-    print('propogated loss')
+    print('propogated loss', loss.item())
     optimizer.step()
     print('ran optimizer')
-    return list(out.detach().numpy())
+    return [o.detach().numpy() for o in out]
 
 # step 3
 def sense(game: TrainingGame, model_output):
@@ -193,7 +193,12 @@ def run_batch(input, model, optimizer, batch_size, output_channels):
         ids.append((process_id, game_id))
         print(len(actual))
     print('accumulated batch!')
-    result = get_bn_output(model, optimizer, batch_input, actual)
+    tupled_actual = (
+        torch.from_numpy(np.stack(x[0] for x in actual)).to(model.device), 
+        torch.from_numpy(np.stack(x[1] for x in actual)).to(model.device), 
+        torch.from_numpy(np.stack(x[2] for x in actual)).to(model.device)
+    )
+    result = get_bn_output(model, optimizer, batch_input, tupled_actual)
     print('got result')
     for i,r in enumerate(result):
         p_id, game_id = ids[i]
@@ -211,10 +216,20 @@ def convert_board_to_target(game: TrainingGame) -> np.ndarray:
                 index = ID_MAPPING[piece.piece_type]
                 piece_locs[index][r][c] = 1
     # EN PASSANT
-    last_move = game.board.moves[-1]
-    if last_move
+    en_passant = np.zeros(shape=(8), dtype=np.float32)
+    if game.board.move_stack:
+        last_move = game.board.move_stack[-1]
+        piece = game.board.piece_at(last_move.to_square)
+        if piece and piece.piece_type == chess.PAWN and abs(last_move.to_square - last_move.from_square) == 16:
+            en_passant[last_move.to_square % 8] = 1
     # CASTLING RIGHTS
-    
-    return piece_locs
+    castling_rights = np.zeros(shape=(2), dtype=np.float32)
+    if game.board.has_queenside_castling_rights(not game.us.color):
+        castling_rights[0] = 1
+    if game.board.has_kingside_castling_rights(not game.us.color):
+        castling_rights[1] = 1
+
+
+    return piece_locs, en_passant, castling_rights
 
 

@@ -2,7 +2,7 @@
 
 
 from typing import List, Tuple
-
+import chess
 
 def convert_coords_to_squares(coords: List[Tuple[int, int]]) -> List[int]:
     results = []
@@ -26,3 +26,6 @@ def opposite_square(sq: int) -> int:
 
 def opposite_rc(r: int, c: int) -> Tuple[int, int]:
     return (7 - r, 7 - c)
+
+def get_squares_between_incl(start: chess.Square, end: chess.Square) -> List[chess.Square]:
+    return [start] + chess.SquareSet.between(start, end).tolist() + [end]

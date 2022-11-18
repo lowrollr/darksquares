@@ -26,6 +26,7 @@ class ConvolutionalLayer(nn.Module):
             nn.BatchNorm2d(out_c),
             nn.ReLU()
         )
+        
     def forward(self, x):
         x = self.block(x)
         return x
@@ -44,7 +45,7 @@ class BeliefNet(nn.Module):
         self.passant_layer = nn.Linear(64, 8)
         self.castle_flatten = nn.Flatten()
         self.castle_layer = nn.Linear(64, 2)
-        self.loss_fn = nn.MSELoss()
+        self.mse_loss = nn.MSELoss()
     
     @property
     def device(self):
@@ -67,14 +68,13 @@ class BeliefNet(nn.Module):
         x = torch.sigmoid(x)
 
         probs, passant, castle = torch.split(x, (6, 1, 1), dim=1)
-        castle = torch.sigmoid(self.castle_flatten(castle))
-        passant = torch.sigmoid(self.passant_flatten(passant))
-
+        castle = torch.sigmoid(self.castle_layer(self.castle_flatten(castle)))
+        passant = torch.sigmoid(self.passant_layer(self.passant_flatten(passant)))
         return probs, passant, castle
 
     def loss_fn(self, input, output, actual) -> torch.TensorType:
         print('called loss fn!')
         # slice input to yield the same as expected output
         input = input[:,14:20,:,:], input[:,20,:,0], input[:,21,0,3:5]
-        print([a.shape for a in actual])
-        return sum([self.loss_fn(a, b) for a,b in zip(output, actual)]) - sum([self.loss_fn(a, b) for a,b in zip(input, actual)])
+        print([(a,b) for a,b in zip(output,actual)])
+        return sum([self.mse_loss(a, b) for a,b in zip(output, actual)]) - sum([self.mse_loss(a, b) for a,b in zip(input, actual)])
