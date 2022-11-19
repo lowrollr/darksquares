@@ -76,5 +76,4 @@ class BeliefNet(nn.Module):
         print('called loss fn!')
         # slice input to yield the same as expected output
         input = input[:,14:20,:,:], input[:,20,:,0], input[:,21,0,3:5]
-        print([(a,b) for a,b in zip(output,actual)])
         return sum([self.mse_loss(a, b) for a,b in zip(output, actual)]) - sum([self.mse_loss(a, b) for a,b in zip(input, actual)])

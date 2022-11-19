@@ -20,7 +20,7 @@ class DarkSquaresBot(reconchess.Player):
 
     def handle_game_start(self, color: reconchess.Color, board: reconchess.chess.Board, opponent_name: str):
         self.color = color
-        self.beliefs = BeliefState(color)
+        self.beliefs = BeliefState(playing_white=color)
 
 
     def handle_opponent_move_result(self, captured_my_piece: bool, capture_square: Optional[reconchess.Square]):

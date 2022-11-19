@@ -121,17 +121,17 @@ class Evaluator:
         for p, r, c in locs:
             sq = (r * 8) + c
             if p == 0:
-                board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.KING, color=not state.white))
+                board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.KING, color=chess.BLACK))
             elif p == 1:
-                board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.QUEEN, color=not state.white))
+                board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.QUEEN, color=chess.BLACK))
             elif p == 2:
-                board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.ROOK, color=not state.white))
+                board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.ROOK, color=chess.BLACK))
             elif p == 3:
-                board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.KNIGHT, color=not state.white))
+                board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.KNIGHT, color=chess.BLACK))
             elif p == 4:
-                board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.BISHOP, color=not state.white))
+                board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.BISHOP, color=chess.BLACK))
             elif p == 5:
-                board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.PAWN, color=not state.white))
+                board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.PAWN, color=chess.BLACK))
         return board
 
     def get_at_most_n_likely_states(self, state: BeliefState, n=100):
@@ -147,7 +147,7 @@ class Evaluator:
         # each list contains the probability and coordinates for each piece at a particular square
         for r in range(8):
             for c in range(8):
-                grid_spaces.append(sorted([(state.opp_beliefs[p][r][c], (p, r, c)) for p in range(6)], key= lambda x: -x[0]))
+                grid_spaces.append(sorted([(state.opp_board[p][r][c], (p, r, c)) for p in range(6)], key= lambda x: -x[0]))
         grid_spaces.sort(reverse=True)
         # each object that goes on the heap is a tuple containing the probability product and (queue index, square choice index)
         first = (-np.prod([s for s, _ in grid_spaces[0][0:num_samples]]), tuple([(i,0) for i in range(num_samples)]))

@@ -21,7 +21,9 @@ class TrainingEvaluator(Evaluator):
         categorical_scores = defaultdict(lambda: defaultdict(lambda: {'running_score': 0.0, 'running_weight_sum': 0.0}))
 
         for np_board, prob_board in self.get_at_most_n_likely_states(state, n=100):
+            
             board: reconchess.chess.Board = self.np_to_board(state, np_board)
+            print(state.white, board)
             # check to see if opponet is in check, if so we weight this board with maximum weight
             if board.is_check():
                 weighted_evaluation = 100000

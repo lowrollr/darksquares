@@ -19,7 +19,7 @@ ID_MAPPING = {
         
 
 class BeliefState:
-    def __init__(self, playing_white=True) -> None:
+    def __init__(self, playing_white) -> None:
         self.board = reconchess.chess.Board('8/8/8/8/8/8/PPPPPPPP/RNBQKBNR')
         self.psuedo_absences = np.zeros(shape=(8,8))
         self.psuedo_presences = np.zeros(shape=(8,8))

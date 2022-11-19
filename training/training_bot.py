@@ -84,7 +84,7 @@ def get_bn_output(model, optimizer, input, actual):
 
 # step 3
 def sense(game: TrainingGame, model_output):
-    sense_square = game.us.get_sense_square(model_output, game.us.beliefs)
+    sense_square = game.us.evaluator.get_sense_square(model_output, game.us.beliefs)
     sense_result = game.sense(sense_square)
     game.us.handle_sense_result(sense_result)
 
@@ -92,7 +92,7 @@ def sense(game: TrainingGame, model_output):
 
 # step 5
 def post_sense(game: TrainingGame, model_output):
-    move = game.us.get_best_move(model_output, game.us.beliefs)
+    move = game.us.evaluator.get_best_move(model_output, game.us.beliefs)
     requested_move, taken_move, opt_enemy_capture_square = game.move(move)
     
 
@@ -147,7 +147,7 @@ def train(id, input, output, output_channels, completed_batches, batch_size, bat
     last_game_id = 0
     jobs = collections.deque()
     while batches > completed_batches.value:
-        
+        print(id, completed_batches.value, output.qsize(), len(jobs), input.qsize(), batch_size)
         if ctx:
             if input.qsize() > batch_size:
                 print('running batch! input queue size =', input.qsize())
@@ -171,10 +171,10 @@ def train(id, input, output, output_channels, completed_batches, batch_size, bat
             game = args[0]
             if fn == pre_sense:
                 games_awaiting_output[game.game_id] = (game, True)
-                input.put((result, convert_board_to_target(game), game.game_id, id))
+                input.put((result, convert_board_to_target(game), id, game.game_id))
             elif fn == sense:
                 games_awaiting_output[game.game_id] = (game, False)
-                input.put((result, convert_board_to_target(game), game.game_id, id))
+                input.put((result, convert_board_to_target(game), id, game.game_id))
             elif fn == post_sense:
                 jobs.append((pre_sense, (game,)))
         else:
@@ -188,21 +188,22 @@ def run_batch(input, model, optimizer, batch_size, output_channels):
     ids = []
     while len(actual) < batch_size:
         input_board, actual_board, process_id, game_id = input.get()
+        print('process', process_id)
         actual.append(actual_board)
         batch_input.append(input_board)
         ids.append((process_id, game_id))
-        print(len(actual))
     print('accumulated batch!')
     tupled_actual = (
         torch.from_numpy(np.stack(x[0] for x in actual)).to(model.device), 
         torch.from_numpy(np.stack(x[1] for x in actual)).to(model.device), 
         torch.from_numpy(np.stack(x[2] for x in actual)).to(model.device)
     )
-    result = get_bn_output(model, optimizer, batch_input, tupled_actual)
+    probs, passant, castle = get_bn_output(model, optimizer, batch_input, tupled_actual)
     print('got result')
-    for i,r in enumerate(result):
+    for i in range(len(probs)):
         p_id, game_id = ids[i]
-        output_channels[p_id].put((r, game_id))
+        print(p_id, game_id)
+        output_channels[p_id].put(((probs[i], passant[i], castle[i]), game_id))
     print('done with batch')
 
 def convert_board_to_target(game: TrainingGame) -> np.ndarray:
