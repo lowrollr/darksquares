@@ -46,18 +46,18 @@ class Evaluator:
         # accumulate weighted eval scores for each piece on each grid space
         categorical_scores = defaultdict(lambda: defaultdict(lambda: {'running_score': 0.0, 'running_weight_sum': 0.0}))
 
-        for np_board, prob_board in self.get_at_most_n_likely_states(state, n=100):
-            board: chess.Board = self.np_to_board(state, np_board)
+        for board, prob in self.get_at_most_n_likely_states(state, n=100):
+            
             # check to see if opponet is in check, if so we weight this board with maximum weight
             if board.is_check():
                 weighted_evaluation = 100000
             else:
-                weighted_evaluation = self.engine.get_engine_centipawn_eval(board) * prob_board
+                weighted_evaluation = self.engine.get_engine_centipawn_eval(board) * prob
             # for each grid space
             for s in range(64):
                 piece = board.piece_at(s)
                 categorical_scores[s][piece]['running_score'] += weighted_evaluation
-                categorical_scores[s][piece]['running_weight_sum'] += prob_board
+                categorical_scores[s][piece]['running_weight_sum'] += prob
         
         
         # calculate eval variance for each square on the board
@@ -89,14 +89,13 @@ class Evaluator:
         # accumulate LC0 probabilities for each move from each of N most likely states,
         # weighted by board likelihood
         move_scores = dict()
-        for np_board, prob_board in self.get_at_most_n_likely_states(state, n=100):
-            board = self.np_to_board(state, np_board)
+        for board, prob in self.get_at_most_n_likely_states(state, n=100):
             if board.is_check():
                 probs = dict()
                 # get square of enemy king
-                king_sq = np.argmax(np_board[0], axis=0)
+                king_sq = board.king(chess.BLACK)
                 for sq in board.checkers():
-                    if board.piece_at(sq).color == state.white:
+                    if board.piece_at(sq).color == chess.WHITE:
                         move = reconchess.chess.Move(from_square=sq, to_square=king_sq)
                         probs[move.uci()] = 1
             else:
@@ -105,7 +104,7 @@ class Evaluator:
             for m, p in probs.items():
                 if m not in move_scores:
                     move_scores[m] = 0.0
-                move_scores[m] += (prob_board * p)
+                move_scores[m] += (prob * p)
 
         # choose the best scoring move
         if move_scores:
@@ -118,6 +117,7 @@ class Evaluator:
     @staticmethod
     def np_to_board(state: BeliefState, locs: np.ndarray) -> reconchess.chess.Board:
         board = deepcopy(state.board)
+        board.turn = chess.WHITE
         for p, r, c in locs:
             sq = (r * 8) + c
             if p == 0:
@@ -134,15 +134,23 @@ class Evaluator:
                 board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.PAWN, color=chess.BLACK))
         return board
 
+
+
     def get_at_most_n_likely_states(self, state: BeliefState, n=100):
-        
+        state.zero_occupied_spaces()
+        state.zero_backrank_pawns()
         grid_spaces = []
         
         seen = set()
+
+        # -- CONSTAINTS -- 
+        # each board contains exactly 1 enemy king
+        # pawns cannot be on either back rank (we can just zero these out)
+        # there can be a maximum of 8 enemy pawns
+        
         
         num_samples = state.num_opp_pieces
         count = 0
-        num_pieces = 6
         # yields a sorted list of lists (by probability)
         # each list contains the probability and coordinates for each piece at a particular square
         for r in range(8):
@@ -162,25 +170,22 @@ class Evaluator:
                 seen.add(selections)
                 # add coordinates of each piece in combo to solution
                 # make sure number of kings on board == 1:
-                pseudo_legal = True
-                has_king = False
-                for i, j in selections:
-                    p,r,c = grid_spaces[i][j][1]
-                    if p == 0:
-                        if has_king:
-                            pseudo_legal = False
-                            break
-                        has_king = True
-                    elif p == 5:
-                        if r == 0 or r == 7:
-                            pseudo_legal = False
-                            break
+                # check if board is leagl
+                board = self.np_to_board(state, [grid_spaces[i][j][1] for i, j in selections])
+            
+                status = board.status()
 
-                pseudo_legal = pseudo_legal and has_king
-                if pseudo_legal:
+                if chess.Status.VALID in status or not (\
+                        chess.Status.TOO_MANY_BLACK_PAWNS in status or
+                        chess.Status.TOO_MANY_BLACK_KINGS in status or
+                        chess.Status.NO_BLACK_KING in status):
                     count += 1
-                    yield ([[grid_spaces[i][j][1] for i, j in selections], prob])
+                    yield (board, prob)
                 # select next spaces
+
+                # pivot king to next most likely square AND
+                # pivot other squares
+
                 
                 for i in range(num_samples):
                     # cannot relax if next selection occurs right after
@@ -197,7 +202,7 @@ class Evaluator:
                         heapq.heappush(heap, (-new_prob, new_selections))
 
                     # we can relax piece chosen
-                    if selections[i][1] < num_pieces - 1:
+                    if selections[i][1] < 6 - 1:
                         new_selections = list(selections)
                         # update index i with new relaxed selection
                         new_selections[i] = (selections[i][0], selections[i][1] + 1)
@@ -207,7 +212,8 @@ class Evaluator:
                         new_prob = prob / old_val * new_val
                         new_selections = tuple(new_selections)
                         heapq.heappush(heap, (-new_prob, new_selections))
-                
+
+        print(f'{count}/{n} states generated')
         return
 
 

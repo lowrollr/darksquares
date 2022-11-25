@@ -1,11 +1,15 @@
 
+from copy import deepcopy
 from typing import List, Optional, Tuple
-from matplotlib.pyplot import pie
+import chess
+
 import numpy as np
 import reconchess
 import torch
-from utils.board import get_squares_between_incl, convert_squares_to_coords, opposite_square
+from matplotlib.pyplot import pie
 
+from utils.board import (convert_squares_to_coords, get_squares_between_incl,
+                         opposite_square)
 
 ID_MAPPING = {
     reconchess.chess.KING:   0,
@@ -15,6 +19,9 @@ ID_MAPPING = {
     reconchess.chess.BISHOP: 4,
     reconchess.chess.PAWN:   5
 }
+
+
+
 
         
 
@@ -32,12 +39,15 @@ class BeliefState:
         self.opp_castle_q = 1
         self.opp_castle_k = 1
         self.white = playing_white
+        if not self.white:
+            self.board.turn == chess.BLACK
         self.init_opp_board()
 
         # NOTE: any data must be normalized prior to being used in the state model, 
         # right now each externally called function applies normalization before doing anything else, 
         # perhaps there is a better way to do this
     
+        
     def init_opp_board(self):
         for piece, i in ID_MAPPING.items():
             if piece == reconchess.chess.PAWN:
@@ -68,6 +78,13 @@ class BeliefState:
         self.known_absences = np.zeros(shape=(8,8))
         self.known_presences = np.zeros(shape=(8,8))
 
+    def zero_occupied_spaces(self) -> None:
+        for r in range(8):
+            for c in range(8):
+                sq = (r * 8) + c
+                if self.board.piece_at(sq):
+                    self.opp_board[:, r, c] = 0
+    
 
     def to_nn_input(self) -> np.ndarray:
         data_tensor = np.zeros(shape=(22,8,8), dtype=np.float32)
@@ -80,18 +97,18 @@ class BeliefState:
         data_tensor[5] = np.unpackbits(np.array([self.num_opp_pieces], dtype=np.uint8), count=8)
 
         # -- CASTLING (US) -- # 
-        if self.board.has_kingside_castling_rights(self.white):
+        if self.board.has_kingside_castling_rights(chess.WHITE):
             data_tensor[6,:,0:4] = 1
-        if self.board.has_queenside_castling_rights(self.white):
+        if self.board.has_queenside_castling_rights(chess.WHITE):
             data_tensor[6,:,4:] = 1
 
         # -- EN PASSANT (US) -- # 
         if len(self.board.move_stack) > 1:
             move = self.board.move_stack[-2]
-            fr_sq, to_sq = move.from_square, move.to_square
-            if self.board.piece_at(fr_sq) == reconchess.chess.PAWN and abs(fr_sq - to_sq) == 16:
-                fi = fr_sq % 8
-                data_tensor[7,:,fi] = 1
+            # so jank bro
+            if ''.join(filter(lambda x: not x.isalpha(), move.uci())) == '24':
+                f = ord(move.uci()[0]) - 97
+                data_tensor[7,:,f] = 1
 
         # -- PIECES (US) -- #
         for sq, piece in self.board.piece_map().items():
@@ -129,6 +146,7 @@ class BeliefState:
                     self.known_absences[r][c] = 1
 
     def update(self, probs, passant, castle):
+
         self.opp_board = probs
         self.opp_en_passant = passant
         self.opp_castle_q = castle[0]
@@ -174,8 +192,9 @@ class BeliefState:
         for (r,c) in convert_squares_to_coords(in_between_squares):
             self.psuedo_absences[r][c] = 1
 
-    
-
+    def zero_backrank_pawns(self):
+        self.opp_board[ID_MAPPING[reconchess.chess.PAWN]][0][:] = 0
+        self.opp_board[ID_MAPPING[reconchess.chess.PAWN]][7][:] = 0
 
     def set_ground_truth(self, truth: List[Tuple[reconchess.Square, Optional[reconchess.chess.Piece]]]):
         for sq, piece in truth:

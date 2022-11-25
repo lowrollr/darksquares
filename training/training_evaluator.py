@@ -20,20 +20,20 @@ class TrainingEvaluator(Evaluator):
 
         categorical_scores = defaultdict(lambda: defaultdict(lambda: {'running_score': 0.0, 'running_weight_sum': 0.0}))
 
-        for np_board, prob_board in self.get_at_most_n_likely_states(state, n=100):
+        for board, prob in self.get_at_most_n_likely_states(state, n=100):
             
-            board: reconchess.chess.Board = self.np_to_board(state, np_board)
-            print(state.white, board)
             # check to see if opponet is in check, if so we weight this board with maximum weight
+            board.turn = reconchess.chess.BLACK
             if board.is_check():
                 weighted_evaluation = 100000
             else:
-                weighted_evaluation = self.engine.get_engine_centipawn_eval(board) * prob_board
+                board.turn = reconchess.chess.WHITE
+                weighted_evaluation = self.engine.get_engine_centipawn_eval(board) * prob
             # for each grid space
             for s in range(64):
                 piece = board.piece_at(s)
                 categorical_scores[s][piece]['running_score'] += weighted_evaluation
-                categorical_scores[s][piece]['running_weight_sum'] += prob_board
+                categorical_scores[s][piece]['running_weight_sum'] += prob
         
         
         # calculate eval variance for each square on the board
@@ -59,23 +59,24 @@ class TrainingEvaluator(Evaluator):
         # accumulate LC0 probabilities for each move from each of N most likely states,
         # weighted by board likelihood
         move_scores = dict()
-        for np_board, prob_board in self.get_at_most_n_likely_states(state, n=100):
-            board = self.np_to_board(state, np_board)
+        for board, prob in self.get_at_most_n_likely_states(state, n=100):
+            board.turn = reconchess.chess.BLACK
             if board.is_check():
                 probs = dict()
                 # get square of enemy king
-                king_sq = np.argmax(np_board[0], axis=0)
+                king_sq = board.king(reconchess.chess.BLACK)
                 for sq in board.checkers():
-                    if board.piece_at(sq).color == state.white:
+                    if board.piece_at(sq).color == reconchess.chess.WHITE:
                         move = reconchess.chess.Move(from_square=sq, to_square=king_sq)
                         probs[move.uci()] = 1
             else:
+                board.turn = reconchess.chess.WHITE
                 probs = self.engine.get_move_probabilities(board)
 
             for m, p in probs.items():
                 if m not in move_scores:
                     move_scores[m] = 0.0
-                move_scores[m] += (prob_board * p)
+                move_scores[m] += (prob * p)
 
         # choose the best scoring move
         if move_scores:
