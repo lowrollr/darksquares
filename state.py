@@ -154,8 +154,7 @@ class BeliefState:
         
     # apply the move to our board, and make sure any gleaned information about our opponet's pieces makes it into our belief state
     def apply_move(self, move: reconchess.chess.Move) -> None:
-        self.clear_information_gain()
-        from_sq, to_sq = self.get_square(move.from_sq), self.get_square(move.to_sq)
+        from_sq, to_sq = self.get_square(move.from_square), self.get_square(move.to_square)
         move = reconchess.chess.Move(from_sq, to_sq, move.promotion)
         in_between_squares = []
         piece = self.board.piece_at(from_sq)
@@ -253,9 +252,9 @@ class BeliefState:
         # if moving piece was a pawn and it tried to move forward, there is a piece on the square it tried to move forward to
 
         # get piece that is moving
-
         req_move = reconchess.chess.Move(self.get_square(req_move.from_square), self.get_square(req_move.to_square), req_move.promotion)
-        taken_move = reconchess.chess.Move(self.get_square(taken_move.from_square), self.get_square(taken_move.to_square), taken_move.promotion)
+        if taken_move:
+            taken_move = reconchess.chess.Move(self.get_square(taken_move.from_square), self.get_square(taken_move.to_square), taken_move.promotion)
 
         piece = self.board.piece_at(req_move.from_square)
         
@@ -263,7 +262,7 @@ class BeliefState:
 
         if piece.piece_type == reconchess.chess.PAWN:
             if from_c != to_c:
-                self.absences[1][to_r][to_c] = 1
+                self.psuedo_absences[to_r][to_c] = 1
             else:
                 if taken_move is None:
                     self.psuedo_presences[from_r + (1 if self.white else -1)][from_c] = 1

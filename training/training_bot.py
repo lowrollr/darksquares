@@ -18,9 +18,11 @@ from reconchess.bots.attacker_bot import AttackerBot
 from reconchess.bots.random_bot import RandomBot
 from reconchess.bots.trout_bot import TroutBot
 from reconchess.play import play_turn, notify_opponent_move_results
+from utils.board import mirror_move
 from utils.lc0 import LeelaWrapper
 import numpy as np
 from state import ID_MAPPING
+from utils.misc import trace_unhandled_exceptions
 
 
 
@@ -96,7 +98,10 @@ def sense(game: TrainingGame, model_output):
 # step 5
 def post_sense(game: TrainingGame, model_output):
     move = game.us.evaluator.get_best_move(model_output, game.us.beliefs)
+    if not game.we_play_white:
+        move = mirror_move(move)
     requested_move, taken_move, opt_enemy_capture_square = game.move(move)
+    
     
 
     game.us.handle_move_result(requested_move, taken_move,
@@ -125,7 +130,7 @@ class ModelContext:
     # 4. continue with next fn in flow
 
 def start_training(batch_size=1024, batches=1000):
-    num_procs = 2
+    num_procs = 6
     with mp.Pool(processes=num_procs) as pool:
         manager = mp.Manager()
         input = manager.Queue()
@@ -143,6 +148,7 @@ def start_training(batch_size=1024, batches=1000):
 
 # main function for training worker
 # maintains local game/job queues
+@trace_unhandled_exceptions
 def train(id, input, output, output_channels, completed_batches, batch_size, batches, ctx=None):
     # one engine per process
     engine = LeelaWrapper()
@@ -164,7 +170,7 @@ def train(id, input, output, output_channels, completed_batches, batch_size, bat
                 if sense_next:
                     jobs.append((sense, (game, model_out)))
                 else:
-                    jobs.append((sense, (game, model_out)))
+                    jobs.append((post_sense, (game, model_out)))
                 games_awaiting_output.pop(game_id)
 
         elif jobs:

@@ -166,7 +166,7 @@ class Evaluator:
             prob, selections = heapq.heappop(heap)
             prob = -prob
 
-            if selections not in seen:
+            if selections not in seen and prob != 0.0:
                 seen.add(selections)
                 # add coordinates of each piece in combo to solution
                 # make sure number of kings on board == 1:
@@ -175,10 +175,10 @@ class Evaluator:
             
                 status = board.status()
 
-                if chess.Status.VALID in status or not (\
-                        chess.Status.TOO_MANY_BLACK_PAWNS in status or
-                        chess.Status.TOO_MANY_BLACK_KINGS in status or
-                        chess.Status.NO_BLACK_KING in status):
+                if not status or not (\
+                        (chess.Status.TOO_MANY_BLACK_PAWNS | status) == status or
+                        (chess.Status.TOO_MANY_KINGS | status) == status or 
+                        (chess.Status.NO_BLACK_KING | status) == status):
                     count += 1
                     yield (board, prob)
                 # select next spaces
@@ -213,7 +213,6 @@ class Evaluator:
                         new_selections = tuple(new_selections)
                         heapq.heappush(heap, (-new_prob, new_selections))
 
-        print(f'{count}/{n} states generated')
         return
 
 

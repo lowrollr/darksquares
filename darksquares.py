@@ -42,6 +42,8 @@ class DarkSquaresBot(reconchess.Player):
 
     def handle_move_result(self, requested_move: Optional[reconchess.chess.Move], taken_move: Optional[reconchess.chess.Move],
                            captured_opponent_piece: bool, capture_square: Optional[reconchess.Square]):
+
+        self.beliefs.clear_information_gain()
         if taken_move != requested_move:
             # handle implied difference between the requested move and the taken move
             self.beliefs.apply_impl(requested_move, taken_move)
@@ -59,7 +61,6 @@ class DarkSquaresBot(reconchess.Player):
         self.beliefs.board.push(reconchess.chess.Move.from_uci('0000'))
 
         print(f'Requested: {requested_move}, Taken: {taken_move}')
-        print(self.beliefs.board)
 
     def handle_game_end(self, winner_color: Optional[reconchess.Color], win_reason: Optional[reconchess.WinReason],
                         game_history: reconchess.GameHistory):

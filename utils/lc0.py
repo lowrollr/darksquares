@@ -3,8 +3,6 @@ from typing import Tuple
 import chess
 import chess.engine
 
-leela_dot_exe = os.getenv('LC0_EXE')
-leela_backend = os.getenv('LC0_BACKEND')
 
 
 
@@ -12,6 +10,9 @@ leela_backend = os.getenv('LC0_BACKEND')
 
 class LeelaWrapper():
     def __init__(self) -> None:
+        leela_dot_exe = os.getenv('LC0_EXE')
+        leela_backend = os.getenv('LC0_BACKEND')
+
         self.engine = chess.engine.SimpleEngine.popen_uci(leela_dot_exe)
         self.engine.configure({'Backend': leela_backend, 'BackendOptions': 'batch_size=10256'})
 

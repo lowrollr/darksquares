@@ -4,6 +4,13 @@
 from typing import List, Tuple
 import chess
 
+def mirror_move(move: chess.Move) -> chess.Move:
+    if move:
+        move.from_square = opposite_square(move.from_square)
+        move.to_square = opposite_square(move.to_square)
+    return move
+
+
 def convert_coords_to_squares(coords: List[Tuple[int, int]]) -> List[int]:
     results = []
     for r, c in coords:

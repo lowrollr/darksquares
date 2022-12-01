@@ -23,12 +23,16 @@ class TrainingEvaluator(Evaluator):
         for board, prob in self.get_at_most_n_likely_states(state, n=100):
             
             # check to see if opponet is in check, if so we weight this board with maximum weight
+            
+            if board.is_checkmate():
+                continue
             board.turn = reconchess.chess.BLACK
             if board.is_check():
                 weighted_evaluation = 100000
             else:
                 board.turn = reconchess.chess.WHITE
                 weighted_evaluation = self.engine.get_engine_centipawn_eval(board) * prob
+            board.turn = reconchess.chess.WHITE
             # for each grid space
             for s in range(64):
                 piece = board.piece_at(s)
@@ -60,6 +64,9 @@ class TrainingEvaluator(Evaluator):
         # weighted by board likelihood
         move_scores = dict()
         for board, prob in self.get_at_most_n_likely_states(state, n=100):
+            
+            if board.is_checkmate():
+                continue
             board.turn = reconchess.chess.BLACK
             if board.is_check():
                 probs = dict()
@@ -72,7 +79,7 @@ class TrainingEvaluator(Evaluator):
             else:
                 board.turn = reconchess.chess.WHITE
                 probs = self.engine.get_move_probabilities(board)
-
+            board.turn = reconchess.chess.WHITE
             for m, p in probs.items():
                 if m not in move_scores:
                     move_scores[m] = 0.0

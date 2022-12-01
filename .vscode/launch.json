@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "justMyCode": true,
+            "justMyCode": false,
             "env": {
                 "LC0_EXE": "~/Repos/lc0/build/release/lc0",
                 "LCO_BACKEND": "blas",
