@@ -133,7 +133,7 @@ class BeliefState:
 
     def opp_move(self, capture_square: Optional[reconchess.Square]) -> None:
         # remove piece that was captured from our local board
-        if capture_square:
+        if capture_square is not None:
             sq = self.get_square(capture_square)
             r, c = convert_squares_to_coords([sq])[0]
             self.board.remove_piece_at(capture_square)
