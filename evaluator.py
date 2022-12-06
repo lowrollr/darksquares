@@ -115,9 +115,10 @@ class Evaluator:
 
 
     @staticmethod
-    def np_to_board(state: BeliefState, locs: np.ndarray) -> reconchess.chess.Board:
+    def np_to_board(state: BeliefState, locs: np.ndarray, en_passant_file: Optional[int], op_castle_q: bool, op_castle_k: bool) -> reconchess.chess.Board:
         board = deepcopy(state.board)
         board.turn = chess.WHITE
+        board.ep_square = chess.Square(en_passant_file + 40) if en_passant_file is not None else None
         for p, r, c in locs:
             sq = (r * 8) + c
             if p == 0:
@@ -132,6 +133,16 @@ class Evaluator:
                 board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.BISHOP, color=chess.BLACK))
             elif p == 5:
                 board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.PAWN, color=chess.BLACK))
+        fen_castle_string = ''
+        if state.board.has_kingside_castling_rights(chess.WHITE):
+            fen_castle_string += 'K'
+        if state.board.has_queenside_castling_rights(chess.WHITE):
+            fen_castle_string += 'Q'
+        if op_castle_k:
+            fen_castle_string += 'k'
+        if op_castle_q:
+            fen_castle_string += 'q'
+        board.set_castling_fen(fen_castle_string)
         return board
 
 
@@ -143,10 +154,10 @@ class Evaluator:
         
         seen = set()
 
-        # -- CONSTAINTS -- 
-        # each board contains exactly 1 enemy king
-        # pawns cannot be on either back rank (we can just zero these out)
-        # there can be a maximum of 8 enemy pawns
+        # for each hypothesis, we sample:
+        # 16 next most likely piece locations (or less if pieces have been captured)
+        # King + Queen -side castling rights
+        # En passant file (or no file)
         
         
         num_samples = state.num_opp_pieces
@@ -158,20 +169,25 @@ class Evaluator:
                 grid_spaces.append(sorted([(state.opp_board[p][r][c], (p, r, c)) for p in range(6)], key= lambda x: -x[0]))
         grid_spaces.sort(reverse=True)
         # each object that goes on the heap is a tuple containing the probability product and (queue index, square choice index)
-        first = (-np.prod([s for s, _ in grid_spaces[0][0:num_samples]]), tuple([(i,0) for i in range(num_samples)]))
+        # we also need to consider the most likely state for each of queenside castling, kingside castling, and en passant square and include those in the probability product
+    
+        en_passant_files = sorted([(x, i) for i,x in enumerate(state.opp_en_passant)] + [(np.prod([1 - x for x in state.opp_en_passant]), -1)], key=lambda x: -x[0])
+        kingside_castle = sorted([(state.opp_castle_k, True), (1 - state.opp_castle_k, False)], key=lambda x: -x[0])
+        queenside_castle = sorted([(state.opp_castle_q, True), (1 - state.opp_castle_q, False)], key=lambda x: -x[0])
+
+        first = (-np.prod([s for s, _ in grid_spaces[0][0:num_samples]]) * en_passant_files[0][0] * kingside_castle[0][0] * queenside_castle[0][0], (tuple([(i,0) for i in range(num_samples)]), 0, 0, 0))
         heap = [first]
 
         while heap and count < n:
             # get most likely combo from heap
-            prob, selections = heapq.heappop(heap)
+            prob, configuration = heapq.heappop(heap)
             prob = -prob
 
-            if selections not in seen and prob != 0.0:
-                seen.add(selections)
-                # add coordinates of each piece in combo to solution
-                # make sure number of kings on board == 1:
-                # check if board is leagl
-                board = self.np_to_board(state, [grid_spaces[i][j][1] for i, j in selections])
+            if configuration not in seen and prob != 0.0:
+                # we need to keep track of boards we've already seen (downside of this algorithm, it can yield duplicates)
+                seen.add(configuration)
+                selections, en_passant, castle_k, castle_q = configuration
+                board = self.np_to_board(state, [grid_spaces[i][j][1] for i, j in selections], en_passant_files[en_passant][1], queenside_castle[castle_q][1], kingside_castle[castle_k][1])
             
                 status = board.status()
 
@@ -199,7 +215,7 @@ class Evaluator:
                         old_val, new_val = grid_spaces[selections[i][0]][selections[i][1]][0], grid_spaces[selections[i][0] + 1][selections[i][1]][0]
                         new_prob = prob / old_val * new_val
                         new_selections = tuple(new_selections)
-                        heapq.heappush(heap, (-new_prob, new_selections))
+                        heapq.heappush(heap, (-new_prob, (new_selections, en_passant, castle_k, castle_q)))
 
                     # we can relax piece chosen
                     if selections[i][1] < 6 - 1:
@@ -211,7 +227,22 @@ class Evaluator:
 
                         new_prob = prob / old_val * new_val
                         new_selections = tuple(new_selections)
-                        heapq.heappush(heap, (-new_prob, new_selections))
+                        heapq.heappush(heap, (-new_prob, (new_selections, en_passant, castle_k, castle_q)))
+                
+                # relax en passant square
+                if en_passant < 8:
+                    en_passant += 1
+                    new_prob = prob / en_passant_files[en_passant - 1][0] * en_passant_files[en_passant][0]
+                # relax kingside castling
+                if castle_k == 0:
+                    castle_k = 1
+                    new_prob = prob / kingside_castle[0][0] * kingside_castle[castle_k][0]
+                    heapq.heappush(heap, (-new_prob, (selections, en_passant, castle_k, castle_q)))
+                # relax queenside castling
+                if castle_q == 0:
+                    castle_q = 1
+                    new_prob = prob / queenside_castle[0][0] * queenside_castle[castle_q][0]
+                    heapq.heappush(heap, (-new_prob, (selections, en_passant, castle_k, castle_q)))
 
         return
 
