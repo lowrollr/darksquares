@@ -106,8 +106,8 @@ def post_sense(game: TrainingGame, model_output):
 # designate a 'model' worker that handles running input through the model
 
 class ModelContext:
-    def __init__(self) -> None:
-        self.model = BeliefNet(22,8)
+    def __init__(self, device) -> None:
+        self.model = BeliefNet(22,8).to(device)
         self.optimizer = torch.optim.Adam(self.model.parameters())
 
 
@@ -136,7 +136,7 @@ def start_training(batch_size=1024, num_procs=None, batches=1000):
             ctx = None
             out_channels = None
             if i == 0:
-                ctx = ModelContext()
+                ctx = ModelContext(device='cuda' if torch.cuda.is_available() else 'cpu')
                 out_channels = output_channels
             args.append((i, input, output_channels[i], out_channels, completed_batches, batch_size, batches, ctx))
         pool.starmap(train, args)

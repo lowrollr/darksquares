@@ -11,10 +11,12 @@ from net import BeliefNet
 from state import BeliefState
 
 class DarkSquaresBot(reconchess.Player):
-    def __init__(self, evaluator) -> None:
+    def __init__(self, evaluator=None) -> None:
         super().__init__()
         self.color = None
         self.beliefs: BeliefState = None
+        if evaluator is None:
+            evaluator = Evaluator(leela=None)
         self.evaluator: Evaluator = evaluator
         self.__name__ = 'DarkSquaresBot'
 
