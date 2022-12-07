@@ -237,7 +237,7 @@ class BeliefState:
         # zero out square for each piece in opp_beliefs
         # for each piece with a nonzero probabilitiy, normalize other squares probabilities for that piece
         for index in range(6):
-            if self.opp_beliefs[index][r][c]:
+            if self.opp_board[r][c]:
                 self.set_then_normalize(index, r, c, 0)
 
         self.num_opp_pieces -= 1
