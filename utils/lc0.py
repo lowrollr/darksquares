@@ -12,9 +12,10 @@ class LeelaWrapper():
     def __init__(self) -> None:
         leela_dot_exe = os.getenv('LC0_EXE')
         leela_backend = os.getenv('LC0_BACKEND')
+        backend_options = os.getenv('LC0_BACKEND_OPTIONS')
 
         self.engine = chess.engine.SimpleEngine.popen_uci(leela_dot_exe)
-        self.engine.configure({'Backend': leela_backend, 'BackendOptions': 'batch_size=10256'})
+        self.engine.configure({'Backend': leela_backend, 'BackendOptions': backend_options})
 
     def get_move_probabilities(self, board: chess.Board, time_limit=0.1, multipv=200):
         analysis = self.engine.analysis(board, chess.engine.Limit(time_limit), multipv=multipv, options={'VerboseMoveStats': True}, info=chess.engine.INFO_BASIC)
