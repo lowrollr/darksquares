@@ -108,6 +108,7 @@ def post_sense(game: TrainingGame, model_output):
 class ModelContext:
     def __init__(self, device) -> None:
         self.model = BeliefNet(22,8).to(device)
+        self.model.migrate_submodules()
         self.optimizer = torch.optim.Adam(self.model.parameters())
 
 
