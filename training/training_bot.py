@@ -123,8 +123,9 @@ class ModelContext:
     # 3. Once adequate model input is collected, get results and map back to games requesting for
     # 4. continue with next fn in flow
 
-def start_training(batch_size=1024, batches=1000):
-    num_procs = 7
+def start_training(batch_size=1024, num_procs=None, batches=1000):
+    if num_procs is None:
+        num_procs = mp.cpu_count()
     with mp.Pool(processes=num_procs) as pool:
         manager = mp.Manager()
         input = manager.Queue()
