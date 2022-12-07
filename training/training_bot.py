@@ -79,7 +79,7 @@ def get_bn_output(model, optimizer, input, actual):
     loss.backward()
     print('loss:', loss.item())
     optimizer.step()
-    return [o.detach().numpy() for o in out]
+    return [o.detach().cpu().numpy() for o in out]
 
 # step 3
 def sense(game: TrainingGame, model_output):
