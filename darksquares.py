@@ -67,5 +67,4 @@ class DarkSquaresBot(reconchess.Player):
     def handle_game_end(self, winner_color: Optional[reconchess.Color], win_reason: Optional[reconchess.WinReason],
                         game_history: reconchess.GameHistory):
         print(game_history._taken_moves, win_reason, winner_color == self.color)
-        self.evaluator.__init__(self.engine)
         # self.evaluator.engine.quit()

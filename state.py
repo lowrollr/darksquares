@@ -136,7 +136,7 @@ class BeliefState:
         if capture_square is not None:
             sq = self.get_square(capture_square)
             r, c = convert_squares_to_coords([sq])[0]
-            self.board.remove_piece_at(capture_square)
+            self.board.remove_piece_at(sq)
             self.known_presences[r][c] = 1
 
         for r in range(8):
@@ -267,7 +267,7 @@ class BeliefState:
                 if taken_move is None:
                     self.psuedo_presences[from_r + (1 if self.white else -1)][from_c] = 1
                 else:
-                    taken_to_r, taken_to_c = convert_squares_to_coords(taken_move.to_square)[0]
+                    taken_to_r, taken_to_c = convert_squares_to_coords([taken_move.to_square])[0]
                     self.psuedo_presences[taken_to_r + (1 if self.white else -1)][taken_to_c] = 1
 
     # assumes row and column are already normalized!

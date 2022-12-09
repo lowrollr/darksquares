@@ -66,6 +66,15 @@ def pre_sense(game: TrainingGame):
     if game.turn != game.we_play_white:
         # play opponet's turn (except when we play first of course)
         play_turn(game, game.them, end_turn_last=True)
+        if game.is_over():
+            game.end()
+            winner_color = game.get_winner_color()
+            win_reason = game.get_win_reason()
+            game_history = game.get_game_history()
+            game.us.handle_game_end(winner_color, win_reason, game_history)
+            game.them.handle_game_end(winner_color, win_reason, game_history)
+            return None
+
     notify_opponent_move_results(game, game.us)
     return game.us.beliefs.to_nn_input()
 
@@ -102,6 +111,17 @@ def post_sense(game: TrainingGame, model_output):
     game.us.handle_move_result(requested_move, taken_move,
                               opt_enemy_capture_square is not None, opt_enemy_capture_square)
     game.end_turn()
+    if game.is_over():
+        game.end()
+        winner_color = game.get_winner_color()
+        win_reason = game.get_win_reason()
+        game_history = game.get_game_history()
+
+        game.us.handle_game_end(winner_color, win_reason, game_history)
+        game.them.handle_game_end(winner_color, win_reason, game_history)
+        return True
+    return False
+        
 # instantiate static pool of workers that take jobs from the job queue
 # designate a 'model' worker that handles running input through the model
 
@@ -174,13 +194,18 @@ def train(id, input, output, output_channels, completed_batches, batch_size, bat
                 result = fn(*args)
                 game = args[0]
                 if fn == pre_sense:
+                    if result is None:
+                        continue
                     games_awaiting_output[game.game_id] = (game, True)
                     input.put((result, convert_board_to_target(game), id, game.game_id))
                 elif fn == sense:
                     games_awaiting_output[game.game_id] = (game, False)
                     input.put((result, convert_board_to_target(game), id, game.game_id))
                 elif fn == post_sense:
-                    jobs.append((pre_sense, (game,)))
+                    if result:
+                        continue
+                    else:
+                        jobs.append((pre_sense, (game,)))
         else:
             jobs.append((pre_sense, (TrainingGame(last_game_id, engine),)))
             last_game_id += 1

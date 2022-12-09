@@ -40,7 +40,7 @@ class Evaluator:
         
          # get BeliefNet output and update the belief state with the result
         with torch.no_grad():
-            result: torch.Tensor = self.model(torch.from_numpy(np.expand_dims(nn_input, 0)), pi=state.num_opp_pieces)
+            result: torch.Tensor = self.model(torch.from_numpy(np.expand_dims(nn_input, 0)))
             state.update(*[r.squeeze(0).numpy() for r in result])
 
         # accumulate weighted eval scores for each piece on each grid space
