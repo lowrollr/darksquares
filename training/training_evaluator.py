@@ -36,8 +36,9 @@ class TrainingEvaluator(Evaluator):
             # for each grid space
             for s in range(64):
                 piece = board.piece_at(s)
-                categorical_scores[s][piece]['running_score'] += weighted_evaluation
-                categorical_scores[s][piece]['running_weight_sum'] += prob
+                if piece is None or piece.color == reconchess.chess.BLACK:
+                    categorical_scores[s][piece]['running_score'] += weighted_evaluation
+                    categorical_scores[s][piece]['running_weight_sum'] += prob
         
         
         # calculate eval variance for each square on the board
@@ -48,15 +49,18 @@ class TrainingEvaluator(Evaluator):
             for piece in categorical_scores[sq]:
                 weighted_avg = categorical_scores[sq][piece]['running_score']/categorical_scores[sq][piece]['running_weight_sum']
                 avg_scores.append(weighted_avg)
-            sq_variance = np.var(avg_scores)
+            
             r, c = sq // 8, sq % 8
-            square_variances[r][c] = sq_variance
+            if avg_scores:
+                square_variances[r][c] = np.var(avg_scores)
+            else:
+                square_variances[r][c] = 0.0
         
         rolling_variances = np.sum(np.lib.stride_tricks.sliding_window_view(square_variances, (3,3)), axis=(3,2))
         
         # choose the 3x3 square that maximizes measured variance and return it
         best_sq = np.argmax(rolling_variances) + 9
-        return best_sq
+        return state.get_square(best_sq)
 
     def get_best_move(self, belief_output, state: BeliefState):
         state.update(* [r for r in belief_output])

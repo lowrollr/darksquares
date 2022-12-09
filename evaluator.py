@@ -76,7 +76,7 @@ class Evaluator:
         
         # choose the 3x3 square that maximizes measured variance and return it
         best_sq = np.argmax(rolling_variances) + 9
-        return best_sq
+        return state.get_square(best_sq)
     
     def choose_move(self, state: BeliefState) -> Optional[reconchess.chess.Move]:
         # convert belief state to BeliefNet input
@@ -115,7 +115,7 @@ class Evaluator:
 
 
     @staticmethod
-    def np_to_board(state: BeliefState, locs: np.ndarray, en_passant_file: int, op_castle_q: bool, op_castle_k: bool) -> reconchess.chess.Board:
+    def np_to_board(state: BeliefState, locs, en_passant_file: int, op_castle_q: bool, op_castle_k: bool) -> reconchess.chess.Board:
         board = deepcopy(state.board)
         board.turn = chess.WHITE
         board.ep_square = chess.Square(en_passant_file + 40) if en_passant_file != -1 else None
@@ -165,11 +165,13 @@ class Evaluator:
         queenside_castle = sorted([(state.opp_castle_q, True), (1 - state.opp_castle_q, False)], key=lambda x: -x[0])
 
         def get_hypothesis_board(pieces, pawns, king, en_passant, castle_k, castle_q):
-            try:
-                most_likely_locs = sorted([(piece_positions[i][p]) for (i,p) in pieces] + [pawn_positions[i] for i in pawns], key=lambda x: -x[0])[:num_samples-1] 
-            except Exception as e:
-                return None, None
-            return np.prod([x[0] for x in most_likely_locs]) * king_positions[king][0] * en_passant_files[en_passant][0] * kingside_castle[castle_k][0] * queenside_castle[castle_q][0], most_likely_locs
+            
+            most_likely_locs = tuple(sorted([(piece_positions[i][p]) for (i,p) in pieces] + [pawn_positions[i] for i in pawns], key=lambda x: -x[0])[:num_samples-1])
+            
+            return np.prod([x[0] for x in most_likely_locs]) * king_positions[king][0] * en_passant_files[en_passant][0] * kingside_castle[castle_k][0] * queenside_castle[castle_q][0], most_likely_locs + ((0, king_positions[king][1]),)
+
+
+        
 
         # a board hypothesis is composed of
         # 1. position of enemy king
@@ -186,75 +188,72 @@ class Evaluator:
 
         heap = [(-prob, first, likely_locs)]
 
+        def heap_hypothesis(prob, hypothesis, locs):
+            if locs in samples:
+                return
+            samples.add(locs)
+            heapq.heappush(heap, (-prob, hypothesis, locs))
+
         while heap and count < n:
             # get most likely combo from heap
             prob, hypothesis, locs = heapq.heappop(heap)
+            
 
-            if hypothesis not in samples:
-                # we need to keep track of boards we've already seen (downside of this algorithm, it can yield duplicates)
-                samples.add(hypothesis)
-                pieces, pawns, king, en_passant, castle_k, castle_q = hypothesis
+            pieces, pawns, king, en_passant, castle_k, castle_q = hypothesis
 
-                # get board from hypothesis
-                piece_locations = locs + [(0, king_positions[king][1])]
-                board = self.np_to_board(state, piece_locations, en_passant_files[en_passant][1], queenside_castle[castle_q][1], kingside_castle[castle_k][1])
+            # get board from hypothesis
+            board = self.np_to_board(state, locs, en_passant_files[en_passant][1], queenside_castle[castle_q][1], kingside_castle[castle_k][1])
+            
+            fen = board.fen()
+            if fen not in boards:
                 count += 1
-                fen = board.fen()
-                if fen not in boards:
-                    boards.add(fen)
-                    yield (board, -prob)
+                boards.add(fen)
+                yield (board, -prob)
 
-                # relax hypothesiss to generate next hypotheses
+            # relax hypothesiss to generate next hypotheses
 
-                # 1. we can relax king position
-                if king < len(king_positions) - 1:
-                    new_hypothesis = (pieces, pawns, king + 1, en_passant, castle_k, castle_q)
-                    if new_hypothesis not in samples:
-                        new_prob, locs = get_hypothesis_board(*new_hypothesis)
-                        heapq.heappush(heap, (-new_prob, new_hypothesis, locs))
+            # 1. we can relax king position
+            if king < len(king_positions) - 1:
+                new_hypothesis = (pieces, pawns, king + 1, en_passant, castle_k, castle_q)
+                new_prob, locs = get_hypothesis_board(*new_hypothesis)
+                heap_hypothesis(new_prob, new_hypothesis, locs)
 
-                # 2. we can relax en passant
-                if en_passant < len(en_passant_files) - 1:
-                    new_hypothesis = (pieces, pawns, king, en_passant + 1, castle_k, castle_q)
-                    if new_hypothesis not in samples:
-                        new_prob, locs = get_hypothesis_board(*new_hypothesis)
-                        heapq.heappush(heap, (-new_prob, new_hypothesis, locs))
+            # 2. we can relax en passant
+            if en_passant < len(en_passant_files) - 1:
+                new_hypothesis = (pieces, pawns, king, en_passant + 1, castle_k, castle_q)
+                new_prob, locs = get_hypothesis_board(*new_hypothesis)
+                heap_hypothesis(new_prob, new_hypothesis, locs)
 
-                # 3. we can relax castling rights
-                if castle_k < len(kingside_castle) - 1:
-                    new_hypothesis = (pieces, pawns, king, en_passant, castle_k + 1, castle_q)
-                    if new_hypothesis not in samples:
-                        new_prob, locs = get_hypothesis_board(*new_hypothesis)
-                        heapq.heappush(heap, (-new_prob, new_hypothesis, locs))
+            # 3. we can relax castling rights
+            if castle_k < len(kingside_castle) - 1:
+                new_hypothesis = (pieces, pawns, king, en_passant, castle_k + 1, castle_q)
+                new_prob, locs = get_hypothesis_board(*new_hypothesis)
+                heap_hypothesis(new_prob, new_hypothesis, locs)
 
-                if castle_q < len(queenside_castle) - 1:
-                    new_hypothesis = (pieces, pawns, king, en_passant, castle_k, castle_q + 1)
-                    if new_hypothesis not in samples:
-                        new_prob, locs = get_hypothesis_board(*new_hypothesis)
-                        heapq.heappush(heap, (-new_prob, new_hypothesis, locs))
+            if castle_q < len(queenside_castle) - 1:
+                new_hypothesis = (pieces, pawns, king, en_passant, castle_k, castle_q + 1)
+                new_prob, locs = get_hypothesis_board(*new_hypothesis)
+                heap_hypothesis(new_prob, new_hypothesis, locs)
 
-                # relax pawns
-                for i in range(len(pawns)):
-                    if (i == len(pawns) - 1 and pawns[i] < len(pawn_positions) - 1) or (i != len(pawns) - 1 and pawns[i] + 1 != pawns[i+1]):
-                        new_hypothesis = (pieces, pawns[:i] + (pawns[i] + 1,) + pawns[i+1:], king, en_passant, castle_k, castle_q)
-                        if new_hypothesis not in samples:
-                            new_prob, locs = get_hypothesis_board(*new_hypothesis)
-                            heapq.heappush(heap, (-new_prob, new_hypothesis, locs))
-                    
+            # relax pawns
+            for i in range(len(pawns)):
+                if (i == len(pawns) - 1 and pawns[i] < len(pawn_positions) - 1) or (i != len(pawns) - 1 and pawns[i] + 1 != pawns[i+1]):
+                    new_hypothesis = (pieces, pawns[:i] + (pawns[i] + 1,) + pawns[i+1:], king, en_passant, castle_k, castle_q)
+                    new_prob, locs = get_hypothesis_board(*new_hypothesis)
+                    heap_hypothesis(new_prob, new_hypothesis, locs)
+                
 
-                # relax other pieces
-                for i in range(len(pieces)):
-                    if (i == len(pieces) - 1 and pieces[i][0] < len(piece_positions) - 1) or (i != len(pieces) - 1 and pieces[i][0] + 1 != pieces[i+1][1]):
-                        new_hypothesis = (pieces[:i] + ((pieces[i][0] + 1, pieces[i][1]),) + pieces[i+1:], pawns, king, en_passant, castle_k, castle_q)
-                        if new_hypothesis not in samples:
-                            new_prob, locs = get_hypothesis_board(*new_hypothesis)
-                            heapq.heappush(heap, (-new_prob, new_hypothesis, locs))
-                    
-                    if i < 4:
-                        new_hypothesis = (pieces[:i] + ((pieces[i][0], pieces[i][1]+1),) + pieces[i+1:], pawns, king, en_passant, castle_k, castle_q)
-                        if new_hypothesis not in samples:
-                                new_prob, locs = get_hypothesis_board(*new_hypothesis)
-                                heapq.heappush(heap, (-new_prob, new_hypothesis, locs))
+            # relax other pieces
+            for i in range(len(pieces)):
+                if (i == len(pieces) - 1 and pieces[i][0] < len(piece_positions) - 1) or (i != len(pieces) - 1 and pieces[i][0] + 1 != pieces[i+1][1]):
+                    new_hypothesis = (pieces[:i] + ((pieces[i][0] + 1, pieces[i][1]),) + pieces[i+1:], pawns, king, en_passant, castle_k, castle_q)
+                    new_prob, locs = get_hypothesis_board(*new_hypothesis)
+                    heap_hypothesis(new_prob, new_hypothesis, locs)
+                
+                if i < 4:
+                    new_hypothesis = (pieces[:i] + ((pieces[i][0], pieces[i][1]+1),) + pieces[i+1:], pawns, king, en_passant, castle_k, castle_q)
+                    new_prob, locs = get_hypothesis_board(*new_hypothesis)
+                    heap_hypothesis(new_prob, new_hypothesis, locs)
         return
 
 
