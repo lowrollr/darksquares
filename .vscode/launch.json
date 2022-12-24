@@ -10,6 +10,7 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
+            "cwd": "/Users/marshingjay/Repos/darksquares/",
             "justMyCode": false,
             "env": {
                 "LC0_EXE": "~/Repos/lc0/build/release/lc0",

@@ -22,9 +22,6 @@ ID_MAPPING = {
 
 
 
-
-        
-
 class BeliefState:
     def __init__(self, playing_white) -> None:
         self.board = reconchess.chess.Board('8/8/8/8/8/8/PPPPPPPP/RNBQKBNR')

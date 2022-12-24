@@ -4,6 +4,7 @@ from collections import defaultdict
 from copy import deepcopy
 import heapq
 from random import choices
+import time
 from typing import Generator, Optional, Tuple
 import chess
 import torch
@@ -16,13 +17,42 @@ from state import ID_MAPPING
 
 from state import BeliefState
 from utils.lc0 import LeelaWrapper
+from utils.board import np_to_board
+
+def np_to_board(state: BeliefState, locs, en_passant_file: int, op_castle_q: bool, op_castle_k: bool) -> reconchess.chess.Board:
+    board = deepcopy(state.board)
+    board.turn = chess.WHITE
+    board.ep_square = chess.Square(en_passant_file + 40) if en_passant_file != -1 else None
+    for _, (p, r, c) in locs:
+        sq = (r * 8) + c
+        if p == 0:
+            board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.KING, color=chess.BLACK))
+        elif p == 1:
+            board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.QUEEN, color=chess.BLACK))
+        elif p == 2:
+            board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.ROOK, color=chess.BLACK))
+        elif p == 3:
+            board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.KNIGHT, color=chess.BLACK))
+        elif p == 4:
+            board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.BISHOP, color=chess.BLACK))
+        elif p == 5:
+            board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.PAWN, color=chess.BLACK))
+    fen_castle_string = ''
+    if state.board.has_kingside_castling_rights(chess.WHITE):
+        fen_castle_string += 'K'
+    if state.board.has_queenside_castling_rights(chess.WHITE):
+        fen_castle_string += 'Q'
+    if op_castle_k:
+        fen_castle_string += 'k'
+    if op_castle_q:
+        fen_castle_string += 'q'
+    board.set_castling_fen(fen_castle_string)
+    return board
 
 class BoardSample:
     def __init__(self, indices, layers) -> None:
         self.layer_counts = layers
         self.selected_indices = indices
-
-
 
 class Evaluator:
     def __init__(self, leela) -> None:
@@ -75,7 +105,9 @@ class Evaluator:
         rolling_variances = np.sum(np.lib.stride_tricks.sliding_window_view(square_variances, (3,3)), axis=(3,2))
         
         # choose the 3x3 square that maximizes measured variance and return it
-        best_sq = np.argmax(rolling_variances) + 9
+        best_sq = np.argmax(rolling_variances)
+        # center square from 6 * 6 grid onto 8 * 8 grid
+        best_sq = (best_sq // 6) * 8 + (best_sq % 6) + 9
         return state.get_square(best_sq)
     
     def choose_move(self, state: BeliefState) -> Optional[reconchess.chess.Move]:
@@ -83,7 +115,7 @@ class Evaluator:
         nn_input = state.to_nn_input() # TODO: move to target device
         # get BeliefNet output and update the belief state with the result
         with torch.no_grad():
-            result: torch.Tensor = self.model(torch.from_numpy(np.expand_dims(nn_input, 0)), pi=state.num_opp_pieces)
+            result: torch.Tensor = self.model(torch.from_numpy(np.expand_dims(nn_input, 0)))
             state.update(*[r.squeeze(0).numpy() for r in result])
 
         # accumulate LC0 probabilities for each move from each of N most likely states,
@@ -115,39 +147,7 @@ class Evaluator:
 
 
     @staticmethod
-    def np_to_board(state: BeliefState, locs, en_passant_file: int, op_castle_q: bool, op_castle_k: bool) -> reconchess.chess.Board:
-        board = deepcopy(state.board)
-        board.turn = chess.WHITE
-        board.ep_square = chess.Square(en_passant_file + 40) if en_passant_file != -1 else None
-        for _, (p, r, c) in locs:
-            sq = (r * 8) + c
-            if p == 0:
-                board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.KING, color=chess.BLACK))
-            elif p == 1:
-                board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.QUEEN, color=chess.BLACK))
-            elif p == 2:
-                board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.ROOK, color=chess.BLACK))
-            elif p == 3:
-                board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.KNIGHT, color=chess.BLACK))
-            elif p == 4:
-                board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.BISHOP, color=chess.BLACK))
-            elif p == 5:
-                board.set_piece_at(sq, reconchess.chess.Piece(reconchess.chess.PAWN, color=chess.BLACK))
-        fen_castle_string = ''
-        if state.board.has_kingside_castling_rights(chess.WHITE):
-            fen_castle_string += 'K'
-        if state.board.has_queenside_castling_rights(chess.WHITE):
-            fen_castle_string += 'Q'
-        if op_castle_k:
-            fen_castle_string += 'k'
-        if op_castle_q:
-            fen_castle_string += 'q'
-        board.set_castling_fen(fen_castle_string)
-        return board
-
-
-
-    def get_at_most_n_likely_states(self, state: BeliefState, n=100):
+    def get_at_most_n_likely_states(state: BeliefState, n=100):
         state.zero_occupied_spaces()
         state.zero_backrank_pawns()
         
@@ -165,13 +165,8 @@ class Evaluator:
         queenside_castle = sorted([(state.opp_castle_q, True), (1 - state.opp_castle_q, False)], key=lambda x: -x[0])
 
         def get_hypothesis_board(pieces, pawns, king, en_passant, castle_k, castle_q):
-            
-            most_likely_locs = tuple(sorted([(piece_positions[i][p]) for (i,p) in pieces] + [pawn_positions[i] for i in pawns], key=lambda x: -x[0])[:num_samples-1])
-            
+            most_likely_locs = tuple(sorted([(piece_positions[i][p]) for (i,p) in pieces] + [pawn_positions[i] for i in pawns], key=lambda x: -x[0])[:num_samples-1])            
             return np.prod([x[0] for x in most_likely_locs]) * king_positions[king][0] * en_passant_files[en_passant][0] * kingside_castle[castle_k][0] * queenside_castle[castle_q][0], most_likely_locs + ((0, king_positions[king][1]),)
-
-
-        
 
         # a board hypothesis is composed of
         # 1. position of enemy king
@@ -202,7 +197,7 @@ class Evaluator:
             pieces, pawns, king, en_passant, castle_k, castle_q = hypothesis
 
             # get board from hypothesis
-            board = self.np_to_board(state, locs, en_passant_files[en_passant][1], queenside_castle[castle_q][1], kingside_castle[castle_k][1])
+            board = np_to_board(state, locs, en_passant_files[en_passant][1], queenside_castle[castle_q][1], kingside_castle[castle_k][1])
             
             fen = board.fen()
             if fen not in boards:
@@ -254,6 +249,7 @@ class Evaluator:
                     new_hypothesis = (pieces[:i] + ((pieces[i][0], pieces[i][1]+1),) + pieces[i+1:], pawns, king, en_passant, castle_k, castle_q)
                     new_prob, locs = get_hypothesis_board(*new_hypothesis)
                     heap_hypothesis(new_prob, new_hypothesis, locs)
+        
         return
 
 

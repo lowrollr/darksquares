@@ -1,6 +1,7 @@
 
 
 
+import time
 from evaluator import Evaluator
 import numpy as np
 from collections import defaultdict
@@ -31,7 +32,8 @@ class TrainingEvaluator(Evaluator):
                 weighted_evaluation = 100000
             else:
                 board.turn = reconchess.chess.WHITE
-                weighted_evaluation = self.engine.get_engine_centipawn_eval(board) * prob
+                # weighted_evaluation = self.engine.get_engine_centipawn_eval(board) * prob
+                weighted_evaluation = prob
             board.turn = reconchess.chess.WHITE
             # for each grid space
             for s in range(64):
@@ -39,7 +41,6 @@ class TrainingEvaluator(Evaluator):
                 if piece is None or piece.color == reconchess.chess.BLACK:
                     categorical_scores[s][piece]['running_score'] += weighted_evaluation
                     categorical_scores[s][piece]['running_weight_sum'] += prob
-        
         
         # calculate eval variance for each square on the board
         square_variances = np.ndarray(shape=(8,8))

@@ -4,7 +4,9 @@
 from typing import List, Tuple
 import chess
 
+
 def mirror_move(move: chess.Move) -> chess.Move:
+    move = chess.Move(move.from_square, move.to_square, move.promotion)
     if move:
         move.from_square = opposite_square(move.from_square)
         move.to_square = opposite_square(move.to_square)
@@ -33,3 +35,4 @@ def opposite_square(sq: int) -> int:
 
 def get_squares_between_incl(start: chess.Square, end: chess.Square) -> List[chess.Square]:
     return [start] + chess.SquareSet.between(start, end).tolist() + [end]
+
