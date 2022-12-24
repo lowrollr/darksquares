@@ -11,20 +11,42 @@ import chess
 import numpy as np
 import scipy.stats
 import chess.pgn
-import tqdm
-import os
 from state import ID_MAPPING, BeliefState
 from utils.board import convert_squares_to_coords, mirror_move, get_squares_between_incl
 import random
+import time
+import hickle
 
 
 pgn = open('/Users/marshingjay/Downloads/lichess_db_standard_rated_2013-01.pgn')
 game = chess.pgn.read_game(pgn)
+start_time = time.time()
 
 inputs = []
 actuals = []
+total_games = 121332
+games = 0
 
 
+def get_bitboard(board):
+    opp_board = np.zeros(shape=(6, 8, 8))
+    # write to belief state
+    for i in range(64):
+        piece = board.piece_at(i)
+        if piece is not None:
+            piece_id = ID_MAPPING[piece.piece_type]
+            if piece.color == chess.BLACK:
+                r, c = convert_squares_to_coords([i])[0]
+                opp_board[piece_id][r][c] = 1
+
+    opp_en_passant = np.zeros(shape=(1,8))
+    if board.ep_square is not None:
+        r, c = convert_squares_to_coords([board.ep_square])[0]
+        opp_en_passant[0][c] = 1
+
+    opp_castle_q = 1 if board.has_queenside_castling_rights(chess.BLACK) else 0
+    opp_castle_k = 1 if board.has_kingside_castling_rights(chess.BLACK) else 0
+    return opp_board, opp_en_passant, (opp_castle_q, opp_castle_k)
 
 
 def sense_board(board, sense_square):
@@ -53,7 +75,7 @@ def apply_noise(state: BeliefState):
     state.opp_castle_q = np.clip(np.random.normal(0, var), 0, 1)
     state.opp_castle_k = np.clip(np.random.normal(0, var), 0, 1)
 
-
+count = 0
 
 while game:
     board = chess.Board()
@@ -62,8 +84,12 @@ while game:
     mirror_board = chess.Board()
     mirror_board.turn = chess.BLACK
     for move in game.mainline_moves():
-        mirror = mirror_move(move)
+        if board.turn == chess.BLACK:
+            state.update(*get_bitboard(board))
+        if mirror_board.turn == chess.BLACK:
+            mirror_state.update(*get_bitboard(mirror_board))
 
+        mirror = mirror_move(move)
         capture = board.is_capture(move)
         mirror_capture = mirror_board.is_capture(mirror)
 
@@ -73,7 +99,6 @@ while game:
 
         board.push(move)
         mirror_board.push(mirror_move(move))
-
         
 
         if board.turn == chess.WHITE:
@@ -84,17 +109,17 @@ while game:
                 capture_square = move.to_square + 8
             elif capture:
                 capture_square = move.to_square
-
             state.opp_move(capture_square=capture_square)
-
             if bool(random.getrandbits(1)):
                 # make sense action
                 sense_sq = random.choice(range(36))
                 sense_sq = (sense_sq // 6) * 8 + (sense_sq % 6) + 9
-                
                 sense_results = sense_board(board, sense_sq)
-
                 state.set_ground_truth(sense_results)
+            apply_noise(state)
+            inputs.append(state.to_nn_input())
+            actuals.append(get_bitboard(board))
+            count += 1
 
         else:
             state.clear_information_gain()
@@ -110,8 +135,6 @@ while game:
             state.apply_move(move)
             state.board.push(chess.Move.from_uci('0000'))
 
-
-            
 
         if mirror_board.turn == chess.WHITE:
             capture_square = None
@@ -129,9 +152,10 @@ while game:
                 sense_results = sense_board(mirror_board, sense_sq)
 
                 mirror_state.set_ground_truth(sense_results)
-
-
-
+            apply_noise(mirror_state)
+            inputs.append(mirror_state.to_nn_input())
+            actuals.append(get_bitboard(mirror_board))
+            count += 1
         else:
             mirror_state.clear_information_gain()
             capture_square = None
@@ -145,24 +169,14 @@ while game:
 
             mirror_state.apply_move(mirror)
             mirror_state.board.push(chess.Move.from_uci('0000'))
-
-
-
-        apply_noise(state)
-        apply_noise(mirror_state)
-
-        
-
-        packed = state.to_nn_input()
-        mirror_packed = mirror_state.to_nn_input()
-
-
-
-
-
+            
+    print(f'Completed {count}, rate: {count / (time.time() - start_time)}/s')
+    games += 1
+    print(f'Completed {games} / {total_games}')
     game = chess.pgn.read_game(pgn)
 
-
+hickle.dump(inputs, 'inputs.hkl')
+hickle.dump(actuals, 'actuals.hkl')
 
 
             
