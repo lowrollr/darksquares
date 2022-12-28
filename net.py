@@ -36,16 +36,18 @@ class BeliefNet(nn.Module):
         super().__init__()
         self.conv1 = ConvolutionalLayer(input_layers, 128)
 
-        self.residual_layers = []
+        layers = []
         for _ in range(residual_layers):
             r = ResidualLayer(128, 128)
-            self.residual_layers.append(r)
+            layers.append(r)
+        self.residual_layers = nn.Sequential(*layers)
         self.conv2 = ConvolutionalLayer(128, output_layers, k_size=1, padding=0)
         self.passant_flatten = nn.Flatten()
         self.passant_layer = nn.Linear(64, 8)
         self.castle_flatten = nn.Flatten()
         self.castle_layer = nn.Linear(64, 2)
         self.mse_loss = nn.MSELoss()
+        
     
     @property
     def device(self):
@@ -57,7 +59,7 @@ class BeliefNet(nn.Module):
         new_residual_layers = []
         for r in self.residual_layers:
             new_residual_layers.append(r.to(self.device))
-        self.residual_layers = new_residual_layers
+        self.residual_layers = nn.Sequential(*new_residual_layers)
         
 
     def forward(self, x):
