@@ -23,13 +23,15 @@ game = chess.pgn.read_game(pgn)
 start_time = time.time()
 
 inputs = []
-actuals = []
+actual_boards = []
+actuals_en_passants = []
+actuals_castles = []
 total_games = 121332
 games = 0
 
 
 def get_bitboard(board):
-    opp_board = np.zeros(shape=(6, 8, 8))
+    opp_board = np.zeros(shape=(6, 8, 8), dtype=np.float32)
     # write to belief state
     for i in range(64):
         piece = board.piece_at(i)
@@ -39,20 +41,19 @@ def get_bitboard(board):
                 r, c = convert_squares_to_coords([i])[0]
                 opp_board[piece_id][r][c] = 1
 
-    opp_en_passant = np.zeros(shape=(1,8))
+    opp_en_passant = np.zeros(shape=(8), dtype=np.float32)
     if board.ep_square is not None:
         r, c = convert_squares_to_coords([board.ep_square])[0]
-        opp_en_passant[0][c] = 1
+        opp_en_passant[c] = 1
 
     opp_castle_q = 1 if board.has_queenside_castling_rights(chess.BLACK) else 0
     opp_castle_k = 1 if board.has_kingside_castling_rights(chess.BLACK) else 0
-    return opp_board, opp_en_passant, (opp_castle_q, opp_castle_k)
+    return opp_board, opp_en_passant, np.array([opp_castle_q, opp_castle_k], dtype=np.float32)
 
 
 def sense_board(board, sense_square):
     # sense 3x3 square centered around sense_square
     # sense_square is a chess square
-    
     squares = [sense_square + 7, sense_square + 8, sense_square + 9, 
                sense_square - 1, sense_square, sense_square + 1, 
                sense_square - 9, sense_square - 8, sense_square - 7]
@@ -77,7 +78,7 @@ def apply_noise(state: BeliefState):
 
 count = 0
 
-while game:
+while game and games < 500:
     board = chess.Board()
     state = BeliefState(playing_white=True)
     mirror_state = BeliefState(playing_white=True)
@@ -118,7 +119,10 @@ while game:
                 state.set_ground_truth(sense_results)
             apply_noise(state)
             inputs.append(state.to_nn_input())
-            actuals.append(get_bitboard(board))
+            actual_board, passant, castle = get_bitboard(board)
+            actual_boards.append(actual_board)
+            actuals_en_passants.append(passant)
+            actuals_castles.append(castle)
             count += 1
 
         else:
@@ -154,7 +158,10 @@ while game:
                 mirror_state.set_ground_truth(sense_results)
             apply_noise(mirror_state)
             inputs.append(mirror_state.to_nn_input())
-            actuals.append(get_bitboard(mirror_board))
+            actual_board, passant, castle = get_bitboard(mirror_board)
+            actual_boards.append(actual_board)
+            actuals_en_passants.append(passant)
+            actuals_castles.append(castle)
             count += 1
         else:
             mirror_state.clear_information_gain()
@@ -175,8 +182,12 @@ while game:
     print(f'Completed {games} / {total_games}')
     game = chess.pgn.read_game(pgn)
 
-hickle.dump(inputs, 'inputs.hkl')
-hickle.dump(actuals, 'actuals.hkl')
+np.save('inputs.npy', np.asarray(inputs), allow_pickle=True)
+np.save('actual_boards.npy', actual_boards, allow_pickle=True)
+np.save('actual_en_passants.npy', actuals_en_passants, allow_pickle=True)
+np.save('actual_castles.npy', actuals_castles, allow_pickle=True)
+
+
 
 
             
