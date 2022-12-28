@@ -52,8 +52,8 @@ lengths[-1] = len(dataset) - sum(lengths[:-1])
 
 train, test = torch.utils.data.random_split(dataset, lengths, generator=seed)
 
-train_loader = torch.utils.data.DataLoader(train, batch_size=64, shuffle=True)
-test_loader = torch.utils.data.DataLoader(test, batch_size=64, shuffle=True)
+train_loader = torch.utils.data.DataLoader(train, batch_size=1024, shuffle=True)
+test_loader = torch.utils.data.DataLoader(test, batch_size=1024, shuffle=True)
 
 while epoch < EPOCHS:
     for input_batch, board_batch, passant_batch, castling_batch in train_loader:
@@ -83,20 +83,20 @@ while epoch < EPOCHS:
     epoch += 1
 
             
-
-
-
-
-
-
-
-'''
 torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': loss,
-            ...
-            }, PATH)
+            }, 'model.pt')
 
-'''
+
+
+
+
+
+
+
+
+
+
