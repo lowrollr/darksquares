@@ -85,8 +85,8 @@ class BeliefNet(nn.Module):
         inp_pieces, inp_passant, inp_castle = inp[:,14:20,:,:], inp[:,20,:,0], inp[:,21,0,3:5]
         act_pieces, act_passant, act_castle = actual
         out_pieces, out_passant, out_castle = output
-        out_loss = weighted_mse_loss(out_pieces, act_pieces) + self.mse_loss(out_passant, act_passant) + self.mse_loss(out_castle, act_castle)
-        inp_loss = weighted_mse_loss(inp_pieces, act_pieces) + self.mse_loss(inp_passant, act_passant) + self.mse_loss(inp_castle, act_castle)
+        out_loss = self.weighted_mse_loss(out_pieces, act_pieces) + self.mse_loss(out_passant, act_passant) + self.mse_loss(out_castle, act_castle)
+        inp_loss = self.weighted_mse_loss(inp_pieces, act_pieces) + self.mse_loss(inp_passant, act_passant) + self.mse_loss(inp_castle, act_castle)
         return out_loss - inp_loss
 
 
