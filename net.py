@@ -1,7 +1,7 @@
 
 import torch
 import torch.nn as nn
-
+import numpy as np
 
 class ResidualLayer(nn.Module):
     def __init__(self, in_c, out_c) -> None:
@@ -31,11 +31,15 @@ class ConvolutionalLayer(nn.Module):
         x = self.block(x)
         return x
 
+WEIGHTS = torch.from_numpy(np.stack([np.full((8,8), 18), np.full((8,8),9), np.full((8,8),5), np.full((8,8),3), np.full((8,8),3), np.full((8,8),1)]))    
+
+def weighted_mse_loss(input, target):
+    return torch.mean(WEIGHTS * ((input - target) ** 2))
+
 class BeliefNet(nn.Module):
     def __init__(self, input_layers, output_layers, residual_layers=20) -> None:
         super().__init__()
         self.conv1 = ConvolutionalLayer(input_layers, 128)
-
         layers = []
         for _ in range(residual_layers):
             r = ResidualLayer(128, 128)
@@ -47,7 +51,7 @@ class BeliefNet(nn.Module):
         self.castle_flatten = nn.Flatten()
         self.castle_layer = nn.Linear(64, 2)
         # self.mse_loss = nn.MSELoss()
-        self.bce_loss = nn.BCELoss()
+        self.mse_loss = nn.MSELoss()
         
     
     @property
@@ -77,10 +81,12 @@ class BeliefNet(nn.Module):
 
     def loss_fn(self, inp, output, actual) -> torch.TensorType:
         # slice input to yield the same as expected output
-        inp = inp[:,14:20,:,:], inp[:,20,:,0], inp[:,21,0,3:5]
-
-        return sum([self.bce_loss(a, b) for a,b in zip(output, actual)]) \
-               - sum([self.bce_loss(a, b) for a,b in zip(inp, actual)])
+        inp_pieces, inp_passant, inp_castle = inp[:,14:20,:,:], inp[:,20,:,0], inp[:,21,0,3:5]
+        act_pieces, act_passant, act_castle = actual
+        out_pieces, out_passant, out_castle = output
+        out_loss = weighted_mse_loss(out_pieces, act_pieces) + self.mse_loss(out_passant, act_passant) + self.mse_loss(out_castle, act_castle)
+        inp_loss = weighted_mse_loss(inp_pieces, act_pieces) + self.mse_loss(inp_passant, act_passant) + self.mse_loss(inp_castle, act_castle)
+        return out_loss - inp_loss
 
 
         # return sum([self.mse_loss(a, b) for a,b in zip(output, actual)]) \
