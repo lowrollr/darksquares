@@ -50,7 +50,7 @@ class BeliefNet(nn.Module):
         self.castle_layer = nn.Linear(64, 2)
         # self.mse_loss = nn.MSELoss()
         self.mse_loss = nn.MSELoss()
-        self.WEIGHTS = torch.from_numpy(np.stack([np.full((8,8), 18), np.full((8,8),9), np.full((8,8),5), np.full((8,8),3), np.full((8,8),3), np.full((8,8),1)]))    
+        # self.WEIGHTS = torch.from_numpy(np.stack([np.full((8,8), 18), np.full((8,8),9), np.full((8,8),5), np.full((8,8),3), np.full((8,8),3), np.full((8,8),1)]))    
         
     def weighted_mse_loss(self, input, target):
         return torch.mean(self.WEIGHTS * ((input - target) ** 2))
@@ -66,7 +66,7 @@ class BeliefNet(nn.Module):
         for r in self.residual_layers:
             new_residual_layers.append(r.to(self.device))
         self.residual_layers = nn.Sequential(*new_residual_layers)
-        self.WEIGHTS = self.WEIGHTS.to(self.device)
+        # self.WEIGHTS = self.WEIGHTS.to(self.device)
 
     def forward(self, x):
         x = self.conv1(x)
