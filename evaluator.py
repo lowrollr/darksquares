@@ -3,17 +3,13 @@
 from collections import defaultdict
 from copy import deepcopy
 import heapq
-from random import choices
-import time
-from typing import Generator, Optional, Tuple
+from typing import Optional
 import chess
 import torch
-import torch.nn as nn
 import numpy as np
 import reconchess
 from net import BeliefNet
 
-from state import ID_MAPPING
 
 from state import BeliefState
 from utils.lc0 import LeelaWrapper
@@ -48,13 +44,8 @@ def np_to_board(state: BeliefState, locs, en_passant_file: int, op_castle_q: boo
     board.set_castling_fen(fen_castle_string)
     return board
 
-class BoardSample:
-    def __init__(self, indices, layers) -> None:
-        self.layer_counts = layers
-        self.selected_indices = indices
-
 class Evaluator:
-    def __init__(self, leela) -> None:
+    def __init__(self, leela: LeelaWrapper) -> None:
         #self.state = GameState()
         #self.op_state = GameState()
         self.model = BeliefNet(22,8)
@@ -162,7 +153,7 @@ class Evaluator:
 
 
     @staticmethod
-    def get_at_most_n_likely_states(state: BeliefState, n=100):
+    def get_at_most_n_likely_states(state: BeliefState, n: int = 100):
         state.zero_occupied_spaces()
         state.zero_backrank_pawns()
         
@@ -172,6 +163,7 @@ class Evaluator:
         num_samples = state.num_opp_pieces
         count = 0
 
+        # we can relax hyptothesis over these six axis (we index from these lists in order to get likely piece configurations in order)
         king_positions = sorted([(state.opp_board[0][r][c], (0, r, c)) for r in range(8) for c in range(8)], key=lambda x: -x[0])
         pawn_positions = sorted([(state.opp_board[5][r][c], (5, r, c)) for r in range(8) for c in range(8)], key=lambda x: -x[0])
         piece_positions = sorted([sorted([(state.opp_board[p][r][c], (p, r, c)) for p in range(1, 5)], key=lambda x: -x[0]) for r in range(8) for c in range(8)], key=lambda x: -x[0][0])
@@ -183,16 +175,7 @@ class Evaluator:
             most_likely_locs = tuple(sorted([(piece_positions[i][p]) for (i,p) in pieces] + [pawn_positions[i] for i in pawns], key=lambda x: -x[0])[:num_samples-1])            
             return np.prod([x[0] for x in most_likely_locs]) * king_positions[king][0] * en_passant_files[en_passant][0] * kingside_castle[castle_k][0] * queenside_castle[castle_q][0], most_likely_locs + ((0, king_positions[king][1]),)
 
-        # a board hypothesis is composed of
-        # 1. position of enemy king
-        # 2. position of other enemy pieces
-        # 3. en passant location
-        # 4. castling rights (kingside and queenside)
-
-        # get initial valid hypothesis
-
-        # get piece positions (ensure # of pawns is not > 8)
-
+        # get most likely hypothesis and add it to the heap
         first = (tuple([(i,0) for i in range(num_samples-1)]), tuple([i for i in range(8)]), 0, 0, 0, 0)
         prob, likely_locs = get_hypothesis_board(*first)
 
@@ -203,6 +186,8 @@ class Evaluator:
                 return
             samples.add(locs)
             heapq.heappush(heap, (-prob, hypothesis, locs))
+
+
 
         while heap and count < n:
             # get most likely combo from heap
@@ -215,26 +200,23 @@ class Evaluator:
             board = np_to_board(state, locs, en_passant_files[en_passant][1], queenside_castle[castle_q][1], kingside_castle[castle_k][1])
             
             fen = board.fen()
+            # yield this board configuration if we haven't already generated it
             if fen not in boards:
                 count += 1
                 boards.add(fen)
                 yield (board, -prob)
 
-            # relax hypothesiss to generate next hypotheses
-
-            # 1. we can relax king position
+            # relax hypothesis on each of six axis (if possible) to generate next hypotheses
             if king < len(king_positions) - 1:
                 new_hypothesis = (pieces, pawns, king + 1, en_passant, castle_k, castle_q)
                 new_prob, locs = get_hypothesis_board(*new_hypothesis)
                 heap_hypothesis(new_prob, new_hypothesis, locs)
 
-            # 2. we can relax en passant
             if en_passant < len(en_passant_files) - 1:
                 new_hypothesis = (pieces, pawns, king, en_passant + 1, castle_k, castle_q)
                 new_prob, locs = get_hypothesis_board(*new_hypothesis)
                 heap_hypothesis(new_prob, new_hypothesis, locs)
 
-            # 3. we can relax castling rights
             if castle_k < len(kingside_castle) - 1:
                 new_hypothesis = (pieces, pawns, king, en_passant, castle_k + 1, castle_q)
                 new_prob, locs = get_hypothesis_board(*new_hypothesis)
@@ -245,21 +227,17 @@ class Evaluator:
                 new_prob, locs = get_hypothesis_board(*new_hypothesis)
                 heap_hypothesis(new_prob, new_hypothesis, locs)
 
-            # relax pawns
             for i in range(len(pawns)):
                 if (i == len(pawns) - 1 and pawns[i] < len(pawn_positions) - 1) or (i != len(pawns) - 1 and pawns[i] + 1 != pawns[i+1]):
                     new_hypothesis = (pieces, pawns[:i] + (pawns[i] + 1,) + pawns[i+1:], king, en_passant, castle_k, castle_q)
                     new_prob, locs = get_hypothesis_board(*new_hypothesis)
                     heap_hypothesis(new_prob, new_hypothesis, locs)
                 
-
-            # relax other pieces
             for i in range(len(pieces)):
                 if (i == len(pieces) - 1 and pieces[i][0] < len(piece_positions) - 1) or (i != len(pieces) - 1 and pieces[i][0] + 1 != pieces[i+1][1]):
                     new_hypothesis = (pieces[:i] + ((pieces[i][0] + 1, pieces[i][1]),) + pieces[i+1:], pawns, king, en_passant, castle_k, castle_q)
                     new_prob, locs = get_hypothesis_board(*new_hypothesis)
-                    heap_hypothesis(new_prob, new_hypothesis, locs)
-                
+                    heap_hypothesis(new_prob, new_hypothesis, locs)  
                 if i < 4:
                     new_hypothesis = (pieces[:i] + ((pieces[i][0], pieces[i][1]+1),) + pieces[i+1:], pawns, king, en_passant, castle_k, castle_q)
                     new_prob, locs = get_hypothesis_board(*new_hypothesis)
