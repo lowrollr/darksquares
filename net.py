@@ -47,7 +47,7 @@ class BeliefNet(nn.Module):
         self.castle_flatten = nn.Flatten()
         self.castle_layer = nn.Linear(64, 2)
         # self.mse_loss = nn.MSELoss()
-        self.lin_loss = nn.L1Loss()
+        self.bce_loss = nn.BCELoss()
         
     
     @property
@@ -79,8 +79,8 @@ class BeliefNet(nn.Module):
         # slice input to yield the same as expected output
         inp = inp[:,14:20,:,:], inp[:,20,:,0], inp[:,21,0,3:5]
 
-        return sum([self.lin_loss(a, b) for a,b in zip(output, actual)]) \
-               - sum([self.lin_loss(a, b) for a,b in zip(inp, actual)])
+        return sum([self.bce_loss(a, b) for a,b in zip(output, actual)]) \
+               - sum([self.bce_loss(a, b) for a,b in zip(inp, actual)])
 
 
         # return sum([self.mse_loss(a, b) for a,b in zip(output, actual)]) \
