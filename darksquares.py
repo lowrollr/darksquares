@@ -30,10 +30,8 @@ class DarkSquaresBot(reconchess.Player):
 
     def choose_sense(self, sense_actions: List[reconchess.Square], move_actions: List[reconchess.chess.Move], seconds_left: float) -> \
             Optional[reconchess.Square]:
-        if self.beliefs.board.move_stack:
-            return self.evaluator.choose_sense_square(self.beliefs)
-        else:
-            return 0
+        return self.evaluator.choose_sense_square(self.beliefs)
+        
 
     def handle_sense_result(self, sense_result: List[Tuple[reconchess.Square, Optional[reconchess.chess.Piece]]]):
         
@@ -61,6 +59,7 @@ class DarkSquaresBot(reconchess.Player):
 
         # push placeholder nullmove for our opponent
         self.beliefs.board.push(reconchess.chess.Move.from_uci('0000'))
+        self.beliefs.num_moves += 1
 
         print(f'Requested: {requested_move}, Taken: {taken_move}')
 

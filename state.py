@@ -129,6 +129,7 @@ class BeliefState:
     
 
     def opp_move(self, capture_square: Optional[reconchess.Square]) -> None:
+        self.num_moves += 1
         # remove piece that was captured from our local board
         if capture_square is not None:
             sq = self.get_square(capture_square)
@@ -275,3 +276,4 @@ class BeliefState:
         coeff = max(prob_sum / new_sum, 0) if new_sum else 0
         self.opp_board[index] = np.multiply(self.opp_board[index], coeff)
         self.opp_board[index][r][c] = new_value
+        self.opp_board[index].clip(min=0, max=1, out=self.opp_board[index])

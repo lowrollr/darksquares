@@ -17,7 +17,6 @@ from state import ID_MAPPING
 
 from state import BeliefState
 from utils.lc0 import LeelaWrapper
-from utils.board import np_to_board
 
 def np_to_board(state: BeliefState, locs, en_passant_file: int, op_castle_q: bool, op_castle_k: bool) -> reconchess.chess.Board:
     board = deepcopy(state.board)
@@ -59,6 +58,8 @@ class Evaluator:
         #self.state = GameState()
         #self.op_state = GameState()
         self.model = BeliefNet(22,8)
+        checkpoint = torch.load('model.pt', map_location=torch.device('cpu'))
+        self.model.load_state_dict(checkpoint['model_state_dict'])
         self.engine = LeelaWrapper() if leela is None else leela
         # should opp be a seperate (identical) evaluator, or something else?
         # how do we simulate opponets moves (given an uncertain inital board state)?
@@ -78,16 +79,23 @@ class Evaluator:
 
         for board, prob in self.get_at_most_n_likely_states(state, n=100):
             
-            # check to see if opponet is in check, if so we weight this board with maximum weight
+            # check to see if opponent is in check, if so we weight this board with maximum weight
+            if board.is_checkmate():
+                continue
+            board.turn = reconchess.chess.BLACK
             if board.is_check():
                 weighted_evaluation = 100000
             else:
+                board.turn = reconchess.chess.WHITE
                 weighted_evaluation = self.engine.get_engine_centipawn_eval(board) * prob
+                # weighted_evaluation = prob
+            board.turn = reconchess.chess.WHITE
             # for each grid space
             for s in range(64):
                 piece = board.piece_at(s)
-                categorical_scores[s][piece]['running_score'] += weighted_evaluation
-                categorical_scores[s][piece]['running_weight_sum'] += prob
+                if piece is None or piece.color == reconchess.chess.BLACK:
+                    categorical_scores[s][piece]['running_score'] += weighted_evaluation
+                    categorical_scores[s][piece]['running_weight_sum'] += prob
         
         
         # calculate eval variance for each square on the board
@@ -98,9 +106,12 @@ class Evaluator:
             for piece in categorical_scores[sq]:
                 weighted_avg = categorical_scores[sq][piece]['running_score']/categorical_scores[sq][piece]['running_weight_sum']
                 avg_scores.append(weighted_avg)
-            sq_variance = np.var(avg_scores)
+            
             r, c = sq // 8, sq % 8
-            square_variances[r][c] = sq_variance
+            if avg_scores:
+                square_variances[r][c] = np.var(avg_scores)
+            else:
+                square_variances[r][c] = 0.0
         
         rolling_variances = np.sum(np.lib.stride_tricks.sliding_window_view(square_variances, (3,3)), axis=(3,2))
         
@@ -122,17 +133,21 @@ class Evaluator:
         # weighted by board likelihood
         move_scores = dict()
         for board, prob in self.get_at_most_n_likely_states(state, n=100):
+            if board.is_checkmate():
+                continue
+            board.turn = reconchess.chess.BLACK
             if board.is_check():
                 probs = dict()
                 # get square of enemy king
-                king_sq = board.king(chess.BLACK)
+                king_sq = board.king(reconchess.chess.BLACK)
                 for sq in board.checkers():
-                    if board.piece_at(sq).color == chess.WHITE:
+                    if board.piece_at(sq).color == reconchess.chess.WHITE:
                         move = reconchess.chess.Move(from_square=sq, to_square=king_sq)
                         probs[move.uci()] = 1
             else:
+                board.turn = reconchess.chess.WHITE
                 probs = self.engine.get_move_probabilities(board)
-
+            board.turn = reconchess.chess.WHITE
             for m, p in probs.items():
                 if m not in move_scores:
                     move_scores[m] = 0.0
