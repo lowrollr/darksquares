@@ -46,7 +46,8 @@ class BeliefNet(nn.Module):
         self.passant_layer = nn.Linear(64, 8)
         self.castle_flatten = nn.Flatten()
         self.castle_layer = nn.Linear(64, 2)
-        self.mse_loss = nn.MSELoss()
+        # self.mse_loss = nn.MSELoss()
+        self.lin_loss = nn.L1Loss()
         
     
     @property
@@ -74,8 +75,13 @@ class BeliefNet(nn.Module):
         passant = torch.sigmoid(self.passant_layer(self.passant_flatten(passant)))
         return probs, passant, castle
 
-    def loss_fn(self, input, output, actual) -> torch.TensorType:
+    def loss_fn(self, inp, output, actual) -> torch.TensorType:
         # slice input to yield the same as expected output
-        input = input[:,14:20,:,:], input[:,20,:,0], input[:,21,0,3:5]
-        return sum([self.mse_loss(a, b) for a,b in zip(output, actual)]) \
-                - sum([self.mse_loss(a, b) for a,b in zip(input, actual)])
+        inp = inp[:,14:20,:,:], inp[:,20,:,0], inp[:,21,0,3:5]
+
+        return sum([self.lin_loss(a, b) for a,b in zip(output, actual)]) \
+               - sum([self.lin_loss(a, b) for a,b in zip(inp, actual)])
+
+
+        # return sum([self.mse_loss(a, b) for a,b in zip(output, actual)]) \
+          #      - sum([self.mse_loss(a, b) for a,b in zip(inp, actual)])
